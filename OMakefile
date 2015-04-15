@@ -1,0 +1,20 @@
+USE_OCAMLFIND = true
+
+FILES[] =
+    error
+    uniq
+    type
+    infer
+
+
+OCAMLPACKS[] += batteries cil
+OCAMLFLAGS += -thread
+
+.DEFAULT: $(OCamlLibrary eba, $(FILES))
+
+# Cleanup
+.PHONY: clean
+clean:
+  rm -f \
+     $(filter-proper-targets $(glob $(addsuffix .*, $(FILES)))) \
+     eba.cma eba.cmxa eba.a
