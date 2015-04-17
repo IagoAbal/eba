@@ -1,6 +1,8 @@
 open Batteries
 open Type
 
+open Shape
+
 (* Environment *)
 
 module Env =
@@ -66,7 +68,7 @@ module Env =
 	let fv_of (env :t) :Vars.t =
 		(* FIXME: This is ignoring the constraints... *)
 		IntMap.fold (fun _ {body = shp, _k} ->
-			Vars.union (FV.of_shape shp)
+			Vars.union (Shape.fv_of shp)
 			) env Vars.empty
 
 	(* FV under constraints k, or "FV of principal environment" *)
@@ -92,7 +94,7 @@ module Env =
 let instantiate :(shape * K.t) scheme -> shape * K.t =
 	fun { vars; body = shp, k } ->
 	let qvs = Vars.to_list vars in
-	let mtvs = Meta.of_bounds qvs in
+	let mtvs = Var.of_bounds qvs in
 	let s = Subst.mk (List.combine qvs mtvs) in
 	let shp' = Shape.var_subst s shp in
 	let k' = K.var_subst s k in
@@ -112,9 +114,9 @@ let quantify (vs :Vars.t) (z :shape) (k :K.t)
 (* generalize effect-free shapes, such as functions *)
 let generalize (env :Env.t) (k :K.t) (z :shape)
 	: (shape * K.t) scheme * K.t =
-	let zz = Meta.zonk_shape z in
+	let zz = Shape.zonk_shape z in
 	(* FIXME: We MUST substitute the principal model of k on z *)
-	let z_fv = FV.of_shape zz in
+	let z_fv = Shape.fv_of zz in
 	let env_fv = Env.kFV k env in
 	let vs = Vars.diff z_fv env_fv in
 	let k1, k2 = K.partition vs k in
@@ -142,7 +144,7 @@ let observe (k :K.t) (env :Env.t) (f :E.t) :E.t =
 
 let of_const : Cil.constant -> shape
 	= function
-	| Cil.CInt64 _ -> Meta.new_shape()
+	| Cil.CInt64 _ -> Shape.new_shape()
 	| Cil.CStr _   -> Bot
 	| Cil.CWStr _  -> Bot
 	| Cil.CChr _   -> Bot
