@@ -43,7 +43,7 @@ module rec Shape : sig
 
 	val get_fun : t -> dom_shape * Var.effect * t
 
-	val var_subst : Var.t Subst.t -> t -> t
+	val vsubst : Var.t Subst.t -> t -> t
 
 	end
 	= struct
@@ -63,7 +63,8 @@ module rec Shape : sig
 	and dom_shape = t list
 
 	let rec fv_of :t -> Vars.t = function
-		| Var x     -> Vars.singleton x
+		(* Variables may be annotated, so we need to dig into! *)
+		| Var x     -> Var.fv_of x
 		| Bot       -> Vars.empty
 		| Ptr z     -> fv_of z
 		| Fun f     -> fv_of_fun_shape f
@@ -148,17 +149,17 @@ module rec Shape : sig
     	-> Error.panic()
 
     (* substitute variables with variables *)
-    let rec var_subst (s :Var.t Subst.t) : t -> t
+    let rec vsubst (s :Var.t Subst.t) : t -> t
     	= function
-    	| Var x    -> Var (Subst.on_var s x)
+    	| Var x    -> Var (Var.vsubst s x)
     	| Bot      -> Bot
-    	| Ptr z    -> Ptr (var_subst s z)
-    	| Fun fz   -> Fun (var_subst_fun s fz)
-    	| Ref(r,z) -> Ref (Subst.on_var s r,var_subst s z)
-    and var_subst_fun s = fun { domain; effects; range } ->
-    	let d' = List.map (var_subst s) domain in
-    	let f' = Subst.on_var s effects in
-    	let r' = var_subst s range in
+    	| Ptr z    -> Ptr (vsubst s z)
+    	| Fun fz   -> Fun (vsubst_fun s fz)
+    	| Ref(r,z) -> Ref (Var.vsubst s r,vsubst s z)
+    and vsubst_fun s = fun { domain; effects; range } ->
+    	let d' = List.map (vsubst s) domain in
+    	let f' = Var.vsubst s effects in
+    	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r' }
 
     end
@@ -186,7 +187,15 @@ and Effects : sig
 
 	val filter : (e -> bool) -> t -> t
 
-	val var_subst : Var.t Subst.t -> t -> t
+	val remove : e -> t -> t
+
+	val fv_of : t -> Vars.t
+
+	val vsubst : Var.t Subst.t -> t -> t
+
+	val of_enum : e Enum.t -> t
+
+	val enum : t -> e Enum.t
 
 	end
 	= struct
@@ -232,13 +241,24 @@ and Effects : sig
 
 	let filter = EffectSet.filter
 
-	let var_subst_e (s :Var.t Subst.t) :e -> e
-		= function
-		| Var x     -> Var (Subst.on_var s x)
-		| Mem (k,r) -> Mem (k,Subst.on_var s r)
+	let remove = EffectSet.remove
 
-	let var_subst (s :Var.t Subst.t) :t -> t =
-		EffectSet.map (var_subst_e s)
+	let fv_of xs = Vars.sum (List.map (function
+		| Var x    -> Var.fv_of x
+		| Mem(_,r) -> Vars.singleton r) 
+		(EffectSet.to_list xs))
+
+	let vsubst_e (s :Var.t Subst.t) :e -> e
+		= function
+		| Var x     -> Var (Var.vsubst s x)
+		| Mem (k,r) -> Mem (k,Var.vsubst s r)
+
+	let vsubst (s :Var.t Subst.t) :t -> t =
+		EffectSet.map (vsubst_e s)
+
+	let of_enum = EffectSet.of_enum
+
+	let enum = EffectSet.enum
 
 	end
 
@@ -246,17 +266,17 @@ and Effects : sig
 
 and Var : sig
 
+	(* NB: Effect subeffecting constraints should not be cyclic or
+	   the FV computation will loop...
+	   What about recursive functions???
+	 *)
+
 	type t = Bound of Uniq.t * kind
-			 (* TODO: MetaEff of Uniq.t Uref.t * Effects.t ref
-				We would avoid substitution of principal models,
-				but we need to break these into separate files
-				first.
-			  *)
-			 | MetaEff of Uniq.t Uref.t
+			 | MetaEff of Uniq.t Uref.t * Effects.t Uref.t
 			 | MetaReg of Uniq.t Uref.t
 			 | MetaShp of Uniq.t * Shape.t option ref
 
-	and kind = Shp | Eff | Reg
+	and kind = Shp | Eff of Effects.t Uref.t | Reg
 
 	and effect = t
 
@@ -272,11 +292,17 @@ and Var : sig
 
 	val is_shape : t -> bool
 
-	val fresh : k:kind -> t
+	val fresh : kind -> t
 
 	val uniq_of : t -> Uniq.t
 
+	val lb_of : t -> Effects.t Uref.t
+
 	val compare : t -> t -> int
+
+	val fv_of : t -> Vars.t
+
+	val add_effect_lb : Var.effect -> Effects.t -> unit
 
 	val new_effect_var : unit -> Var.effect
 
@@ -292,20 +318,17 @@ and Var : sig
 
 	val write_shape_var : Var.shape -> Shape.t -> unit
 
+	val vsubst : Var.t Subst.t -> t -> t
+
 	end
 	= struct
 
 	type t = Bound of Uniq.t * kind (* Should rename to Param ? *)
-			 (* TODO MetaEff of Uniq.t Uref.t * Effects.t ref
-				We would avoid substitution of principal models,
-				but we need to break these into separate files
-				first.
-			  *)
-			 | MetaEff of Uniq.t Uref.t
+			 | MetaEff of Uniq.t Uref.t * Effects.t Uref.t
 			 | MetaReg of Uniq.t Uref.t
 			 | MetaShp of Uniq.t * Shape.t option ref
 
-	and kind = Shp | Eff | Reg
+	and kind = Shp | Eff of Effects.t Uref.t | Reg
 
 	and effect = t
 
@@ -314,53 +337,77 @@ and Var : sig
 	and region = t
 
 	let kind_of = function
-		| Bound(_,k) -> k
-		| MetaEff _  -> Eff
-		| MetaReg _  -> Reg
-		| MetaShp _  -> Shp
+		| Bound(_,k)    -> k
+		| MetaEff(_,lb) -> Eff lb
+		| MetaReg _     -> Reg
+		| MetaShp _     -> Shp
 
-	let is_effect x = kind_of x = Eff
+	let is_effect x =
+		match kind_of x with
+		| Eff _ -> true
+		| _____ -> false
 
 	let is_region x = kind_of x = Reg
 
 	let is_shape x = kind_of x = Shp
 
-	let fresh ~k :t =
+	let fresh k :t =
 		Bound(Uniq.fresh(),k)
 
 	let uniq_of :t -> Uniq.t = function
 		| Bound (u,_)
 		| MetaShp (u,_)
 		-> u
-		| MetaEff uref
+		| MetaEff(uref,_)
 		| MetaReg uref
 		-> Uref.uget uref
 
+	let lb_of x =
+		match kind_of x with
+		| Eff lb -> lb
+		| ______ -> Error.panic()
+
 	let compare x y = Pervasives.compare (uniq_of x) (uniq_of y)
 
-    let new_effect_var () : Var.effect =
+	let fv_of (x :t) :Vars.t =
+		match kind_of x with
+		| Eff lb -> Vars.add x (Effects.fv_of (Uref.uget lb))
+		| ______ -> Vars.singleton x
+
+	let add_effect_lb (x :Var.effect) (lb :Effects.t) :unit =
+		match x with
+		| MetaEff(_,lb_ref) ->
+			let new_lb = Effects.(Uref.uget lb_ref + lb) in
+			Uref.uset lb_ref new_lb
+		| _________________ -> Error.panic()
+
+	let new_effect_var_lb (lb :Effects.t) :Var.effect =
     	let uniq = Uniq.fresh() in
     	let uref = Uref.uref uniq in
-    	MetaEff uref
+    	let eref = Uref.uref lb in
+    	MetaEff(uref,eref)
 
-    let new_region () : Var.region =
+	let new_effect_var () : Var.effect =
+    	new_effect_var_lb Effects.none
+
+	let new_region () : Var.region =
     	let uniq = Uniq.fresh() in
     	let uref = Uref.uref uniq in
     	MetaReg uref
 
-    let new_shape_var () : Var.shape =
+	let new_shape_var () : Var.shape =
     	let uniq = Uniq.fresh() in
     	let uref = ref None in
     	MetaShp(uniq,uref)
 
-    let of_bound :t -> t
-    	= function
-    	| Bound (u,Shp) -> new_shape_var()
-    	| Bound (u,Eff) -> new_effect_var()
-    	| Bound (u,Reg) -> new_region()
-    	| __other__     -> Error.panic()
+	let of_bound :t -> t
+		= function
+    	| Bound (u,Shp)    -> new_shape_var()
+    	| Bound (u,Eff lb) -> new_effect_var_lb (Uref.uget lb)
+    	| Bound (u,Reg)    -> new_region()
+    	| __other__        -> Error.panic()
 
-    let of_bounds :t list -> t list =
+	let of_bounds :t list -> t list =
     	List.map of_bound
 
 	let read_shape_var : Var.shape -> Shape.t option = function
@@ -372,12 +419,34 @@ and Var : sig
 		| MetaShp(_,zoref) -> zoref := Some z
 		| __else__         -> Error.panic()
 
+	let vsubst_lb s :t -> unit
+		= function
+		| Bound(_,Eff lb_ref)
+		| MetaEff(_,lb_ref)
+		-> let lb' = Effects.vsubst s (Uref.uget lb_ref) in
+		   Uref.uset lb_ref lb';
+		| ___
+		-> ()
+
+	let vsubst s x =
+		let y = Option.default x (Subst.find x s) in
+		vsubst_lb s y;
+		y
+
 	end
 
 and Vars : sig
 	include Set.S with type elt := Var.t
+	val none : t
+	val (+) : t -> t -> t
+	val sum : t list -> t
 	end
-	= Set.Make(Var)
+	= struct
+		include Set.Make(Var)
+		let none = empty
+		let (+) = union
+		let sum = List.fold_left union none
+	end
 
 and VarMap : sig
 	include Map.S with type key := Var.t
@@ -392,8 +461,6 @@ and Subst : sig
 
 	val find : Var.t -> 'a t -> 'a option
 
-	val on_var : Var.t t -> Var.t -> Var.t
-
 	end
 	= struct
 
@@ -406,9 +473,6 @@ and Subst : sig
 		VarMap.of_enum (List.enum xs)
 
 	let find = VarMap.Exceptionless.find
-
-	let on_var (s :Var.t t) (x :Var.t) :Var.t =
-		Option.default x (find x s)
 
 	end
 
@@ -459,8 +523,9 @@ module Unify =
 
 	let unify_effects ef1 ef2 =
 		match (ef1,ef2) with
-		| (Var.MetaEff uref1,Var.MetaEff uref2)
-		-> Uref.unite uref1 uref2
+		| (Var.MetaEff(uref1,lb1_ref),Var.MetaEff(uref2,lb2_ref))
+		-> Uref.unite uref1 uref2;
+		   Uref.unite ~sel:E.(+) lb1_ref lb2_ref
 		| __otherwise__
 		-> Error.panic()
 
@@ -550,42 +615,28 @@ module Unify =
 module Constraints =
 	struct
 
-	open Var
+	type elt = Var.effect
 
-	type k = Constraint of Var.effect * effects
+    type t = Vars.t
 
-    type t = k list
+    let none :t = Vars.none
 
-    (* TODO: Some sanity check here? *)
-    let mk_constraint x ef : k = Constraint (x,ef)
+    let add x f k =
+		Var.add_effect_lb x (Effects.remove (Effects.Var x) f);
+		Vars.add x k
 
-    let none :t = []
+    let (+) = Vars.(+)
 
-    let add x ef (ks :t) :t = mk_constraint x ef :: ks
+    let minus = Vars.diff
 
-    let (+) ks1 ks2 = ks1 @ ks2
-
-    let partition (xs :Vars.t) :t -> t * t =
-    	List.partition (fun (Constraint (x,_)) -> Vars.mem x xs)
-
+(*
     let var_subst_k (s :Var.t Subst.t)
     	= fun (Constraint (x,f)) ->
     	Constraint(Subst.on_var s x,E.var_subst s f)
 
     let var_subst (s :Var.t Subst.t) :t -> t =
     	List.map (var_subst_k s)
-
-    let principal : t -> Effects.t Subst.t =
-    	Error.not_implemented()
-
-    (* With Substable we can use first class modules... ?
-       subst_on : (module Substable with type t = a, s = Effects.t) -> a -> a
-
-       principal m_effects_subst k f
-     *)
-    let principal_effects (k :t) : Effects.t -> Effects.t =
-    	let _s = principal k in
-    	Error.not_implemented()
+*)
 
 	end
 

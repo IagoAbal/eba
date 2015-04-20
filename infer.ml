@@ -8,9 +8,12 @@ open Shape
 module Env =
 	struct
 
+	(* THINK: Global and local env, for the global one we can precompute fv_of
+	   since it will be needed quite often. *)
+
     module IntMap = Map.Make(Int)
 
-	type type_scheme = (shape * K.t) scheme
+	type type_scheme = shape scheme
 
 	(** A map from CIL uniques to shape schemes *)
 	type t = type_scheme IntMap.t
@@ -42,7 +45,7 @@ module Env =
 	let of_cil_var (x :Cil.varinfo) :t =
 		let ty = Cil.(x.vtype) in
 		let z = Shape.ref_of ty in
-		singleton x { vars = Vars.empty; body = z, K.none }
+		singleton x { vars = Vars.empty; body = z }
 
 	let of_cil_vars :Cil.varinfo list -> t =
 		List.fold_left (fun env x -> of_cil_var x +> env) empty
@@ -53,9 +56,9 @@ module Env =
 		let args = Cil.(fd.sformals) in
 		let shp' = Shape.of_typ Cil.(fd.svar.vtype) in
 		let args_shp',_,_  = Shape.get_fun shp' in
-		let sch' = { vars = Vars.empty; body = shp', K.none } in
+		let sch' = { vars = Vars.empty; body = shp' } in
 		let args_sch' = List.map (fun z ->
-							{ vars = Vars.empty; body = z, K.none })
+							{ vars = Vars.empty; body = z })
 							args_shp'
 		in
 		let args_env = of_list (List.combine args args_sch') in
@@ -67,13 +70,9 @@ module Env =
 
 	let fv_of (env :t) :Vars.t =
 		(* FIXME: This is ignoring the constraints... *)
-		IntMap.fold (fun _ {body = shp, _k} ->
+		IntMap.fold (fun _ {body = shp} ->
 			Vars.union (Shape.fv_of shp)
 			) env Vars.empty
-
-	(* FV under constraints k, or "FV of principal environment" *)
-	let kFV : K.t -> t -> Vars.t =
-		Error.not_implemented()
 
 	end
 
@@ -91,51 +90,53 @@ module Env =
 	this would not be sound, we also impose the value restriction.
  *)
 
-let instantiate :(shape * K.t) scheme -> shape * K.t =
-	fun { vars; body = shp, k } ->
+let instantiate :shape scheme -> shape * K.t =
+	fun { vars; body = shp} ->
 	let qvs = Vars.to_list vars in
 	let mtvs = Var.of_bounds qvs in
 	let s = Subst.mk (List.combine qvs mtvs) in
-	let shp' = Shape.var_subst s shp in
-	let k' = K.var_subst s k in
-	shp', k'
+	let shp' = Shape.vsubst s shp in
+	let k = Vars.filter Var.is_effect (fv_of shp') in
+	shp', k
 
 (* If we generalize meta-type variables we could just write the meta variables and then zonk, instead of substitution. *)
-let quantify (vs :Vars.t) (z :shape) (k :K.t)
-	: (shape * K.t) scheme =
+let quantify (vs :Vars.t) (z :shape)
+	: shape scheme =
 	let ys = Vars.to_list vs in
-	(* TODO: Why using % this fails to typecheck? *)
-	let xs = List.map (fun y -> Var.fresh (Var.kind_of y)) ys in
+	let xs = List.map (Var.fresh % Var.kind_of) ys in
 	let s = Subst.mk (List.combine ys xs) in
-	let z' = Shape.var_subst s z in
-	let k' = K.var_subst s k in
-	{ vars = Vars.of_list xs; body = z', k' }
+	let z' = Shape.vsubst s z in
+	{ vars = Vars.of_list xs; body = z' }
 
 (* generalize effect-free shapes, such as functions *)
 let generalize (env :Env.t) (k :K.t) (z :shape)
-	: (shape * K.t) scheme * K.t =
+	: shape scheme * K.t =
 	let zz = Shape.zonk_shape z in
-	(* FIXME: We MUST substitute the principal model of k on z *)
 	let z_fv = Shape.fv_of zz in
-	let env_fv = Env.kFV k env in
+	let env_fv = Env.fv_of env in
 	let vs = Vars.diff z_fv env_fv in
-	let k1, k2 = K.partition vs k in
-	let sch = quantify vs z k1 in
-	sch, k2
+	let k1 = K.minus k vs in
+	let sch = quantify vs z in
+	sch, k1
 
-(* Unlike in the paper, here env and f are not principal,
-   we avoid computing the principal environment just to
-   compute the FV, we do it through Env.kFV instead.
- *)
-let observe (k :K.t) (env :Env.t) (f :E.t) :E.t =
-	let env_fv = Env.kFV k env in
-	let pf = K.principal_effects k f in
-	E.filter
-		(function
+let rec principal_effects f =
+	Enum.concat (Enum.map principal_effects_e (Effects.enum f))
+
+and principal_effects_e (f :Effects.e) :Effects.e Enum.t =
+	match f with
+	| Effects.Var x -> 
+		let en = principal_effects (Uref.uget (Var.lb_of x)) in
+		Enum.push en f;
+		en
+	| _____________ -> Enum.singleton f
+
+let observe (env :Env.t) :E.t -> E.t =
+	let env_fv = Env.fv_of env in
+    let is_observable = function
 		| E.Var x     -> Vars.mem x env_fv
 		| E.Mem(_k,r) -> Vars.mem r env_fv
-		)
-		pf
+	in
+	E.of_enum % Enum.filter is_observable % principal_effects
 
 (* TODO: We should keep "precision" info associated with
    region variables. E.g. to know if something is the result
@@ -170,10 +171,10 @@ let of_binop (_env :Env.t) z1 _z2
 	= fun _ -> z1, Effects.none
 
 let rec of_exp (env :Env.t)
-	: Cil.exp -> shape * Effects.t * Constraints.t
+	: Cil.exp -> shape * Effects.t * K.t
 	= function
 	| Cil.Const c
-	-> of_const c, Effects.none, Constraints.none
+	-> of_const c, Effects.none, K.none
 	| Cil.Lval lv
 	-> of_lval env lv
 	(* Even though effectively [unsigned int] or the like,
@@ -185,7 +186,7 @@ let rec of_exp (env :Env.t)
 	| Cil.SizeOfStr _
 	| Cil.AlignOf _
 	| Cil.AlignOfE _
-	-> Bot, Effects.none, Constraints.none
+	-> Bot, Effects.none, K.none
 	(* These operators may add effect, but they don't hide
 	   any of the effects of their arguments *)
 	| Cil.UnOp (op,e,_ty)
@@ -341,13 +342,21 @@ and of_block (env :Env.t) (b :Cil.block) : E.t * K.t =
 	 sum_f_k (List.map (of_stmt env) Cil.(b.bstmts))
 
 let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
-	: (shape * K.t) scheme * K.t =
+		: shape scheme * K.t =
 	let shp', env' = Env.of_fundec env fd in
 	let body = Cil.(fd.sbody) in
 	let env'' = Env.of_fundec_locals env fd in
+	(* THINK: Maybe we don't need to track constraints but just compute them
+	   as the FV of the set of effects computed for the body of the function? *)
 	let bf, k1 = of_block env'' body in
-	let bf' = observe k1 env' bf in
+	let bf' = observe env' bf in (* FIXME in the paper: not env but env'! *)
 	let _,f,_  = Shape.get_fun shp' in
+	(* f >= bf' may introduce a recursive subeffecting constraint
+	   if the function is recursive.
+	   Possible FIX? Create a new fresh effect variable? f' >= bf'?
+	   Possible FIX? Remove f from bf'?
+	   What about mutually recursive functions?
+	 *)
 	let k2 = K.add f bf' k1 in
 	generalize env k2 shp'
 
