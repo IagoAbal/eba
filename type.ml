@@ -281,7 +281,7 @@ and Effects : sig
 
 	let fv_of xs = Vars.sum (List.map (function
 		| Var x    -> Var.fv_of x
-		| Mem(_,r) -> Vars.singleton r) 
+		| Mem(_,r) -> Vars.singleton r)
 		(EffectSet.to_list xs))
 
 	let vsubst_e (s :Var.t Subst.t) :e -> e

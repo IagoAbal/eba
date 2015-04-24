@@ -126,7 +126,7 @@ let rec principal_effects f =
 
 and principal_effects_e (f :Effects.e) :Effects.e Enum.t =
 	match f with
-	| Effects.Var x -> 
+	| Effects.Var x ->
 		let en = principal_effects (Uref.uget (Var.lb_of x)) in
 		Enum.push en f;
 		en
