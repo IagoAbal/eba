@@ -66,7 +66,7 @@ module Env =
 		shp', env'
 
 	let of_fundec_locals (env :t) (fd :Cil.fundec) :t =
-		of_cil_vars Cil.(fd.slocals)
+		of_cil_vars Cil.(fd.slocals) +> env
 
 	let fv_of (env :t) :Vars.t =
 		(* FIXME: This is ignoring the constraints... *)
@@ -345,7 +345,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		: shape scheme * K.t =
 	let shp', env' = Env.of_fundec env fd in
 	let body = Cil.(fd.sbody) in
-	let env'' = Env.of_fundec_locals env fd in
+	let env'' = Env.of_fundec_locals env' fd in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
 	let bf, k1 = of_block env'' body in
