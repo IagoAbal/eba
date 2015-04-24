@@ -367,4 +367,4 @@ let of_global (env :Env.t)
 	: Cil.global -> unit
 	= Error.not_implemented()
 
-let of_file : Cil.file -> unit = Error.not_implemented()
+let of_file (_ : Cil.file) :unit = Error.not_implemented()
