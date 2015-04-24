@@ -45,6 +45,8 @@ module rec Shape : sig
 
 	val vsubst : Var.t Subst.t -> t -> t
 
+	val to_string : t -> string
+
 	end
 	= struct
 
@@ -181,6 +183,19 @@ module rec Shape : sig
     	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r' }
 
+	let rec to_string = function
+		| Var x    -> Var.to_string x
+		| Bot      -> "_|_"
+		| Ptr z    -> to_string z ^ " ptr"
+		| Fun fz   -> to_string_fun fz
+		| Ref(r,z) -> to_string z ^ " ref[" ^ Var.to_string r ^ "]"
+	and to_string_fun = fun {domain; effects; range} ->
+		let args_str = "(" ^ String.concat "," (List.map to_string domain) ^ ")" in
+		let rng_str = to_string range in
+		let lb = Uref.uget (Var.lb_of effects) in
+		let eff_str = Var.to_string effects ^ " >= " ^ Effects.to_string lb in
+		rng_str ^ args_str ^ " fun[" ^ eff_str ^ "]"
+
     end
 
 (* Effects *)
@@ -215,6 +230,8 @@ and Effects : sig
 	val of_enum : e Enum.t -> t
 
 	val enum : t -> e Enum.t
+
+	val to_string : t -> string
 
 	end
 	= struct
@@ -279,6 +296,19 @@ and Effects : sig
 
 	let enum = EffectSet.enum
 
+	let to_string_k = function
+		| Read  -> "read"
+		| Write -> "write"
+		| Alloc -> "alloc"
+		| Free  -> "free"
+
+	let to_string_e = function
+		| Var x    -> Var.to_string x
+		| Mem(k,r) -> to_string_k k ^ "[" ^ Var.to_string r ^ "]"
+
+	let to_string fs =
+		"{" ^ String.concat " " (List.map to_string_e (EffectSet.to_list fs)) ^ "}"
+
 	end
 
 (* Variables *)
@@ -338,6 +368,8 @@ and Var : sig
 	val write_shape_var : Var.shape -> Shape.t -> unit
 
 	val vsubst : Var.t Subst.t -> t -> t
+
+	val to_string : Var.t -> string
 
 	end
 	= struct
@@ -451,6 +483,17 @@ and Var : sig
 		vsubst_lb s y;
 		y
 
+	(* is_meta + kind_of + uniq_of *)
+	let to_string x =
+		let id_str = Uniq.to_string (uniq_of x) in
+		match x with
+		| Bound(_,Shp)   -> "'z" ^ id_str
+		| Bound(_,Reg)   -> "'r" ^ id_str
+		| Bound(_,Eff _) -> "'f" ^ id_str
+		| MetaReg _      -> "?r" ^ id_str
+		| MetaEff _      -> "?f" ^ id_str
+		| MetaShp _      -> "?z" ^ id_str
+
 	end
 
 and Vars : sig
@@ -458,12 +501,14 @@ and Vars : sig
 	val none : t
 	val (+) : t -> t -> t
 	val sum : t list -> t
+	val to_string : t -> string
 	end
 	= struct
 		include Set.Make(Var)
 		let none = empty
 		let (+) = union
 		let sum = List.fold_left union none
+		let to_string _ = Error.not_implemented()
 	end
 
 and VarMap : sig
