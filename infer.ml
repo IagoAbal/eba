@@ -116,7 +116,7 @@ let generalize (env :Env.t) (k :K.t) (z :shape)
 	let env_fv = Env.fv_of env in
 	let vs = Vars.diff z_fv env_fv in
 	let k1 = K.minus k vs in
-	let sch = quantify vs z in
+	let sch = quantify vs zz in
 	sch, k1
 
 let rec principal_effects f =
