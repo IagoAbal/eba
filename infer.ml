@@ -302,7 +302,7 @@ let sum_f_k : (Effects.t * Constraints.t) list -> Effects.t * Constraints.t
    instructions.
  *)
 
-let rec of_stmtkind (env :Env.t)
+let rec of_stmtkind (env :Env.t) (rz :shape)
 	: Cil.stmtkind -> Effects.t * Constraints.t
 	= function
 	| Cil.Instr is
@@ -310,8 +310,10 @@ let rec of_stmtkind (env :Env.t)
 	| Cil.Return (e_opt,_loc)
 	-> begin match e_opt with
 	   | None   -> Effects.none, Constraints.none
-	   | Some e -> let _z, f, k = of_exp env e in
-				f, k
+	   | Some e
+	   -> let z, f, k = of_exp env e in
+	      Unify.(z =~ rz);
+	      f, k
 	   end
 	(* this is just control-flow, no effects *)
 	| Cil.Goto _
@@ -323,37 +325,37 @@ let rec of_stmtkind (env :Env.t)
 	-> Error.not_implemented()
 	| Cil.If (e,b1,b2,_loc)
 	-> let _z0, f0, k0 = of_exp env e in
-	   let      f1, k1 = of_block env b1 in
-	   let      f2, k2 = of_block env b2 in
+	   let      f1, k1 = of_block env rz b1 in
+	   let      f2, k2 = of_block env rz b2 in
 	   Effects.(f0 + f1 + f2), Constraints.(k0 + k1 + k2)
 	| Cil.Switch _
 	-> Error.not_implemented()
 	(* The last two elements in the tuple refer to CFG instrumentation. *)
 	| Cil.Loop (b,_loc,_continue,_break)
-	-> of_block env b
+	-> of_block env rz b
 	| Cil.Block b
-	-> of_block env b
+	-> of_block env rz b
 	(* Not interested in supporting these two from MSVC *)
 	| Cil.TryFinally _
 	| Cil.TryExcept _
 	-> Error.not_implemented()
 
-and of_stmt (env :Env.t) (s :Cil.stmt) : E.t * K.t =
-	of_stmtkind env Cil.(s.skind)
+and of_stmt (env :Env.t) (rz :shape) (s :Cil.stmt) : E.t * K.t =
+	of_stmtkind env rz Cil.(s.skind)
 
-and of_block (env :Env.t) (b :Cil.block) : E.t * K.t =
-	 sum_f_k (List.map (of_stmt env) Cil.(b.bstmts))
+and of_block (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
+	 sum_f_k (List.map (of_stmt env rz) Cil.(b.bstmts))
 
 let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		: shape scheme * K.t =
 	let shp', env' = Env.of_fundec env fd in
 	let body = Cil.(fd.sbody) in
 	let env'' = Env.of_fundec_locals env' fd in
+	let _,f,z_res  = Shape.get_fun shp' in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
-	let bf, k1 = of_block env'' body in
+	let bf, k1 = of_block env'' z_res body in
 	let bf' = observe env' bf in (* FIXME in the paper: not env but env'! *)
-	let _,f,_  = Shape.get_fun shp' in
 	(* f >= bf' may introduce a recursive subeffecting constraint
 	   if the function is recursive.
 	   Possible FIX? Create a new fresh effect variable? f' >= bf'?
