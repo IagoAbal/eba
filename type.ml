@@ -455,7 +455,7 @@ and Var : sig
     	| Bound (u,Shp)    -> new_shape_var()
     	| Bound (u,Eff lb) -> new_effect_var_lb (Uref.uget lb)
     	| Bound (u,Reg)    -> new_region()
-    	| __other__        -> Error.panic()
+    	| __other__        -> Error.panic_with("Type.of_bound: found meta variable")
 
 	let of_bounds :t list -> t list =
     	List.map of_bound
