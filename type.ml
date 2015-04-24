@@ -696,6 +696,8 @@ module Constraints =
 
     let minus = Vars.diff
 
+	let cardinal = Vars.cardinal
+
 (*
     let var_subst_k (s :Var.t Subst.t)
     	= fun (Constraint (x,f)) ->

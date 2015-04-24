@@ -25,6 +25,8 @@ module Env =
 
 	let singleton x ty = add x ty empty
 
+	let cardinal = IntMap.cardinal
+
 	let (+::) : Cil.varinfo * type_scheme -> t -> t =
 		fun (x,ty) -> add x ty
 
