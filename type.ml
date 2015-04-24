@@ -96,8 +96,9 @@ module rec Shape : sig
 		| Bot       -> Bot
 		| Ptr z     -> Ptr (zonk_shape z)
 		| Fun f     -> Fun (zonk_fun f)
-		| Ref (r,z) -> let z' = zonk_shape z in
-		               Ref(r,z')
+		| Ref (r,z) -> let r' = zonk_region r in
+		               let z' = zonk_shape z in
+		               Ref(r',z')
 	and zonk_var a :t =
 		let az_opt = Var.read_shape_var a in
 		match az_opt with
@@ -106,6 +107,24 @@ module rec Shape : sig
 		  let z' = zonk_shape z in
 		  Var.write_shape_var a z';
 		  z'
+
+	and zonk_region :Var.region -> Var.region = function
+		| Var.MetaReg(id,class_uref) as r
+		-> let class_id = Uref.uget class_uref in
+		   if id = class_id
+		   then r
+		   else Var.MetaReg(class_id,class_uref)
+		| __other__
+		-> Error.panic()
+
+	and zonk_effect :Var.effect -> Var.effect = function
+		| Var.MetaEff(id,class_uref,lb_uref) as f
+		-> let class_id = Uref.uget class_uref in
+		   if id = class_id
+		   then f
+		   else Var.MetaEff(class_id,class_uref,lb_uref)
+		| __other__
+		-> Error.panic()
 
 	and zonk_fun f =
 		let { domain = dom; effects = ef; range = res } = f in
@@ -272,8 +291,8 @@ and Var : sig
 	 *)
 
 	type t = Bound of Uniq.t * kind
-			 | MetaEff of Uniq.t Uref.t * Effects.t Uref.t
-			 | MetaReg of Uniq.t Uref.t
+			 | MetaEff of Uniq.t * Uniq.t Uref.t * Effects.t Uref.t
+			 | MetaReg of Uniq.t * Uniq.t Uref.t
 			 | MetaShp of Uniq.t * Shape.t option ref
 
 	and kind = Shp | Eff of Effects.t Uref.t | Reg
@@ -324,8 +343,8 @@ and Var : sig
 	= struct
 
 	type t = Bound of Uniq.t * kind (* Should rename to Param ? *)
-			 | MetaEff of Uniq.t Uref.t * Effects.t Uref.t
-			 | MetaReg of Uniq.t Uref.t
+			 | MetaEff of Uniq.t * Uniq.t Uref.t * Effects.t Uref.t
+			 | MetaReg of Uniq.t * Uniq.t Uref.t
 			 | MetaShp of Uniq.t * Shape.t option ref
 
 	and kind = Shp | Eff of Effects.t Uref.t | Reg
@@ -337,10 +356,10 @@ and Var : sig
 	and region = t
 
 	let kind_of = function
-		| Bound(_,k)    -> k
-		| MetaEff(_,lb) -> Eff lb
-		| MetaReg _     -> Reg
-		| MetaShp _     -> Shp
+		| Bound(_,k)      -> k
+		| MetaEff(_,_,lb) -> Eff lb
+		| MetaReg _       -> Reg
+		| MetaShp _       -> Shp
 
 	let is_effect x =
 		match kind_of x with
@@ -356,11 +375,10 @@ and Var : sig
 
 	let uniq_of :t -> Uniq.t = function
 		| Bound (u,_)
+		| MetaEff(u,_,_)
+		| MetaReg (u,_)
 		| MetaShp (u,_)
 		-> u
-		| MetaEff(uref,_)
-		| MetaReg uref
-		-> Uref.uget uref
 
 	let lb_of x =
 		match kind_of x with
@@ -376,7 +394,7 @@ and Var : sig
 
 	let add_effect_lb (x :Var.effect) (lb :Effects.t) :unit =
 		match x with
-		| MetaEff(_,lb_ref) ->
+		| MetaEff(_,_,lb_ref) ->
 			let new_lb = Effects.(Uref.uget lb_ref + lb) in
 			Uref.uset lb_ref new_lb
 		| _________________ -> Error.panic()
@@ -385,7 +403,7 @@ and Var : sig
     	let uniq = Uniq.fresh() in
     	let uref = Uref.uref uniq in
     	let eref = Uref.uref lb in
-    	MetaEff(uref,eref)
+    	MetaEff(uniq,uref,eref)
 
 	let new_effect_var () : Var.effect =
     	new_effect_var_lb Effects.none
@@ -393,7 +411,7 @@ and Var : sig
 	let new_region () : Var.region =
     	let uniq = Uniq.fresh() in
     	let uref = Uref.uref uniq in
-    	MetaReg uref
+    	MetaReg(uniq,uref)
 
 	let new_shape_var () : Var.shape =
     	let uniq = Uniq.fresh() in
@@ -422,7 +440,7 @@ and Var : sig
 	let vsubst_lb s :t -> unit
 		= function
 		| Bound(_,Eff lb_ref)
-		| MetaEff(_,lb_ref)
+		| MetaEff(_,_,lb_ref)
 		-> let lb' = Effects.vsubst s (Uref.uget lb_ref) in
 		   Uref.uset lb_ref lb';
 		| ___
@@ -516,16 +534,20 @@ module Unify =
 
 	let unify_regions r1 r2 =
 		match (r1,r2) with
-		| (Var.MetaReg uref1,Var.MetaReg uref2)
-		-> Uref.unite uref1 uref2
+		| (Var.MetaReg(id1,uref1),Var.MetaReg(id2,uref2))
+		-> if id1 = id2
+		   then ok
+		   else Uref.unite uref1 uref2
 		| __otherwise__
 		-> Error.panic()
 
 	let unify_effects ef1 ef2 =
 		match (ef1,ef2) with
-		| (Var.MetaEff(uref1,lb1_ref),Var.MetaEff(uref2,lb2_ref))
-		-> Uref.unite uref1 uref2;
-		   Uref.unite ~sel:E.(+) lb1_ref lb2_ref
+		| (Var.MetaEff(id1,uref1,lb1_ref),Var.MetaEff(id2,uref2,lb2_ref))
+		-> if id1 = id2
+			then ok
+			else Uref.unite uref1 uref2;
+		         Uref.unite ~sel:E.(+) lb1_ref lb2_ref
 		| __otherwise__
 		-> Error.panic()
 
