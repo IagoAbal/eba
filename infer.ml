@@ -176,7 +176,10 @@ let rec of_exp (env :Env.t)
 	| Cil.Const c
 	-> of_const c, Effects.none, K.none
 	| Cil.Lval lv
-	-> of_lval env lv
+	-> let z, f, k = of_lval env lv in
+	   let r, z0 = Unify.match_ref_shape z in
+	   let f' = E.(f + read r) in
+	   z0, f', k
 	(* Even though effectively [unsigned int] or the like,
 	 * it seems a terrible idea to cast [size_t] to a
 	 * pointer type, so we give it shape _|_.
