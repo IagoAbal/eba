@@ -1,4 +1,6 @@
 USE_OCAMLFIND = true
+BYTE_ENABLED = true
+NATIVE_ENABLED = false
 
 FILES[] =
     error
@@ -6,11 +8,15 @@ FILES[] =
     type
     infer
 
-
 OCAMLPACKS[] += batteries cil
 OCAMLFLAGS += -thread
 
-.DEFAULT: $(OCamlLibrary eba, $(FILES))
+OCamlLibrary(libeba, $(FILES))
+
+OCAML_LIBS = libeba
+OCamlProgram(eba, eba)
+
+.DEFAULT: eba
 
 # Cleanup
 .PHONY: clean
