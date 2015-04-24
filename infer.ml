@@ -39,7 +39,9 @@ module Env =
 			env2
 
 	let find (x:Cil.varinfo) (env :t) :type_scheme =
-		IntMap.find Cil.(x.vid) env
+		match IntMap.Exceptionless.find Cil.(x.vid) env with
+		| Some sch -> sch
+		| None    -> Error.panic_with("Env.find: not found: " ^ Cil.(x.vname))
 
 	let of_list :(Cil.varinfo * type_scheme) list -> t =
 		IntMap.of_enum % Enum.map (fun (x,y) -> Cil.(x.vid),y) % List.enum
