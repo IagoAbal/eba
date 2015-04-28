@@ -22,4 +22,3 @@ let _ =
 	print_fd fd;
 	output_string stdout "------------------\n";
 	Printf.printf "%s\n" Type.(Shape.to_string (sch.body))
-

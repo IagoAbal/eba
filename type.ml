@@ -45,6 +45,8 @@ module rec Shape : sig
 
 	val vsubst : Var.t Subst.t -> t -> t
 
+	val pp : t -> PP.doc
+
 	val to_string : t -> string
 
 	end
@@ -183,18 +185,21 @@ module rec Shape : sig
     	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r' }
 
-	let rec to_string = function
-		| Var x    -> Var.to_string x
-		| Bot      -> "_|_"
-		| Ptr z    -> to_string z ^ " ptr"
-		| Fun fz   -> to_string_fun fz
-		| Ref(r,z) -> to_string z ^ " ref[" ^ Var.to_string r ^ "]"
-	and to_string_fun = fun {domain; effects; range} ->
-		let args_str = "(" ^ String.concat "," (List.map to_string domain) ^ ")" in
-		let rng_str = to_string range in
+	let rec pp = function
+		| Var x    -> Var.pp x
+		| Bot      -> PP.(!^ "_|_")
+		| Ptr z    -> PP.(!^ "ptr" + space + pp z)
+		| Fun fz   -> pp_fun fz
+		| Ref(r,z) -> PP.(!^ "ref" + brackets(Var.pp r) + space + pp z)
+	and pp_fun = fun {domain; effects; range} ->
+		let args_str = PP.parens(PP.comma_sep (List.map pp domain)) in
+		let rng_str = pp range in
 		let lb = Uref.uget (Var.lb_of effects) in
-		let eff_str = Var.to_string effects ^ " >= " ^ Effects.to_string lb in
-		rng_str ^ args_str ^ " fun[" ^ eff_str ^ "]"
+		let eff_str = PP.(Var.pp effects + !^ "@" + Effects.pp lb) in
+		let arr_str = PP.(!^ "==" + eff_str + !^ "==>") in
+		PP.(parens(args_str ++ arr_str ++ rng_str))
+
+	let to_string = PP.to_string % pp
 
     end
 
@@ -230,6 +235,8 @@ and Effects : sig
 	val of_enum : e Enum.t -> t
 
 	val enum : t -> e Enum.t
+
+	val pp : t -> PP.doc
 
 	val to_string : t -> string
 
@@ -296,18 +303,20 @@ and Effects : sig
 
 	let enum = EffectSet.enum
 
-	let to_string_k = function
-		| Read  -> "read"
-		| Write -> "write"
-		| Alloc -> "alloc"
-		| Free  -> "free"
+	let pp_kind = function
+		| Read  -> PP.(!^ "read")
+		| Write -> PP.(!^ "write")
+		| Alloc -> PP.(!^ "alloc")
+		| Free  -> PP.(!^ "free")
 
-	let to_string_e = function
-		| Var x    -> Var.to_string x
-		| Mem(k,r) -> to_string_k k ^ "[" ^ Var.to_string r ^ "]"
+	let pp_e = function
+		| Var x    -> Var.pp x
+		| Mem(k,r) -> PP.(pp_kind k + brackets(Var.pp r))
 
-	let to_string fs =
-		"{" ^ String.concat " " (List.map to_string_e (EffectSet.to_list fs)) ^ "}"
+	let pp fs =
+		PP.braces(PP.space_sep (List.map pp_e (EffectSet.to_list fs)))
+
+	let to_string = PP.to_string % pp
 
 	end
 
@@ -341,6 +350,8 @@ and Var : sig
 
 	val is_shape : t -> bool
 
+	val is_meta : t -> bool
+
 	val fresh : kind -> t
 
 	val uniq_of : t -> Uniq.t
@@ -368,6 +379,8 @@ and Var : sig
 	val write_shape_var : Var.shape -> Shape.t -> unit
 
 	val vsubst : Var.t Subst.t -> t -> t
+
+	val pp : Var.t -> PP.doc
 
 	val to_string : Var.t -> string
 
@@ -401,6 +414,10 @@ and Var : sig
 	let is_region x = kind_of x = Reg
 
 	let is_shape x = kind_of x = Shp
+
+	let is_meta = function
+		| Bound _ -> false
+		| _other_ -> true
 
 	let fresh k :t =
 		Bound(Uniq.fresh(),k)
@@ -483,16 +500,20 @@ and Var : sig
 		vsubst_lb s y;
 		y
 
-	(* is_meta + kind_of + uniq_of *)
-	let to_string x =
-		let id_str = Uniq.to_string (uniq_of x) in
-		match x with
-		| Bound(_,Shp)   -> "'z" ^ id_str
-		| Bound(_,Reg)   -> "'r" ^ id_str
-		| Bound(_,Eff _) -> "'f" ^ id_str
-		| MetaReg _      -> "?r" ^ id_str
-		| MetaEff _      -> "?f" ^ id_str
-		| MetaShp _      -> "?z" ^ id_str
+	let pp x =
+		let vt_str =
+			if is_meta x then "?" else "'"
+		in
+		let ki_str =
+			match kind_of x with
+			| Shp   -> "z"
+			| Reg   -> "r"
+			| Eff _ -> "f"
+		in
+		let id_str = Uniq.pp (uniq_of x) in
+		PP.(!^ vt_str + !^ ki_str + id_str)
+
+	let to_string = PP.to_string % pp
 
 	end
 
@@ -501,6 +522,7 @@ and Vars : sig
 	val none : t
 	val (+) : t -> t -> t
 	val sum : t list -> t
+	val pp : t -> PP.doc
 	val to_string : t -> string
 	end
 	= struct
@@ -508,7 +530,8 @@ and Vars : sig
 		let none = empty
 		let (+) = union
 		let sum = List.fold_left union none
-		let to_string _ = Error.not_implemented()
+		let pp x = PP.braces (PP.space_sep (List.map Var.pp (elements x)))
+		let to_string = PP.to_string % pp
 	end
 
 and VarMap : sig

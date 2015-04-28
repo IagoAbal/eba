@@ -4,11 +4,12 @@ NATIVE_ENABLED = false
 
 FILES[] =
     error
+    pP
     uniq
     type
     infer
 
-OCAMLPACKS[] += batteries cil
+OCAMLPACKS[] += batteries cil smart_print
 OCAMLFLAGS += -thread
 
 OCamlLibrary(libeba, $(FILES))
