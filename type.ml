@@ -178,7 +178,7 @@ module rec Shape : sig
     	let z = of_typ ty in
     	new_ref_to z
 
-	let of_varinfo x = of_typ Cil.(x.vtype)
+	let of_varinfo x = ref_of Cil.(x.vtype)
 
     let get_fun : t -> dom_shape * Var.effect * t
     	= function
@@ -602,6 +602,18 @@ type 'a scheme =
 		{ vars : Vars.t
 		; body : 'a
 		}
+
+module Scheme : sig
+	val of_shape : shape -> shape scheme
+	val of_varinfo : Cil.varinfo -> shape scheme
+	val fresh_binding : Cil.varinfo -> Cil.varinfo * shape scheme
+	val fresh_bindings : Cil.varinfo list -> (Cil.varinfo * shape scheme) list
+end = struct
+	let of_shape z = { vars = Vars.none; body = z }
+	let of_varinfo x = of_shape (Shape.of_varinfo x)
+	let fresh_binding x = x, of_varinfo x
+	let fresh_bindings = List.map fresh_binding
+end
 
 (* Unification *)
 

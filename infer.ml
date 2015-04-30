@@ -3,95 +3,6 @@ open Type
 
 open Shape
 
-(* Environment *)
-
-module Env =
-	struct
-
-	(* THINK: Global and local env, for the global one we can precompute fv_of
-	 * since it will be needed quite often. We still need to zonk them!
-	 *)
-
-	(* THINK: Map of varinfoS would facilitate debugging... *)
-    module IntMap = Map.Make(Int)
-
-	type type_scheme = shape scheme
-
-	(** A map from CIL uniques to shape schemes *)
-	type t = type_scheme IntMap.t
-
-	let empty = IntMap.empty
-
-	let add (x :Cil.varinfo) (ty :type_scheme) :t -> t =
-		IntMap.add Cil.(x.vid) ty
-
-	let singleton x ty = add x ty empty
-
-	let cardinal = IntMap.cardinal
-
-	let remove x = IntMap.remove Cil.(x.vid)
-
-	let (+::) : Cil.varinfo * type_scheme -> t -> t =
-		fun (x,ty) -> add x ty
-
-	(* Addition of disjoint environments *)
-	let (+>) (env1 :t) (env2 :t) :t =
-		(* assert (disjoint env1 env2 *)
-		IntMap.fold
-			(fun i ty env -> IntMap.add i ty env)
-			env1
-			env2
-
-	let find_opt (x:Cil.varinfo) (env :t) :type_scheme option =
-		IntMap.Exceptionless.find Cil.(x.vid) env
-
-	let find x (env :t) :type_scheme =
-		match find_opt x env with
-		| Some sch -> sch
-		| None     -> Error.panic_with("Env.find: not found: " ^ Cil.(x.vname))
-
-	let of_list :(Cil.varinfo * type_scheme) list -> t =
-		IntMap.of_enum % Enum.map (fun (x,y) -> Cil.(x.vid),y) % List.enum
-
-	let of_var (x :Cil.varinfo) :t =
-		let ty = Cil.(x.vtype) in
-		let z = Shape.ref_of ty in
-		singleton x { vars = Vars.empty; body = z }
-
-	let of_vars :Cil.varinfo list -> t =
-		List.fold_left (fun env x -> of_var x +> env) empty
-
-	let fresh_if_absent (x :Cil.varinfo) (env :t) :t =
-		match find_opt x env with
-		| None ->
-			let z = Shape.ref_of Cil.(x.vtype) in
-			let sch = { vars = Vars.none; body = z } in
-			(x,sch) +:: env
-		| Some _ ->
-			env
-
-	let with_formals (args :Cil.varinfo list) (z_args :dom_shape) (env :t) :t =
-		let sch_args =
-			List.map (fun z -> { vars = Vars.none; body = z }) z_args
-		in
-		let env_args = of_list (List.combine args sch_args) in
-		env_args +> env
-
-	let with_locals (xs :Cil.varinfo list) (env :t) :t =
-		of_vars xs +> env
-
-	let zonk :t -> t =
-		let zonk_sch {vars; body} = {vars; body = Shape.zonk_shape body}  in
-		IntMap.map zonk_sch
-
-	let fv_of (env :t) :Vars.t =
-		(* FIXME: This is ignoring the constraints... *)
-		IntMap.fold (fun _ {body = shp} ->
-			Vars.union (Shape.fv_of shp)
-			) env Vars.empty
-
-	end
-
 (* NOTE: We need to keep track of subeffecting constraints almost everywhere.
    When we instantiate a variable we get subeffecting constraints, that must
    be propagated bottom-up, until we reach a function definition.
@@ -374,8 +285,12 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	let shp' = (Env.find fn env).body in (* TODO: should it be instantiate? *)
 	let _, shp'' = Unify.match_ref_shape shp' in
 	let z_args,f,z_res  = Shape.get_fun shp'' in
-	let env' = Env.with_formals Cil.(fd.sformals) z_args env in
-	let env'' = Env.with_locals Cil.(fd.slocals) env' in
+	let args_bs = List.map2 (fun x y -> x, Scheme.of_shape y)
+		Cil.(fd.sformals)
+		z_args
+	in
+	let env' = Env.with_bindings args_bs env in
+	let env'' = Env.with_fresh_bindings Cil.(fd.slocals) env' in
 	let body = Cil.(fd.sbody) in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
@@ -444,9 +359,10 @@ let of_file (file : Cil.file) :unit =
 	(* TODO: Here we can read axioms *)
 	let env0 = Env.empty in
 	let k0 = K.none in
-	let _ = List.fold_left
-		(fun (env,k) gbl -> of_global env k gbl)
+	let env1, _ = List.fold_left
+		(fun (env,k) gbl ->	of_global env k gbl)
 		(env0,k0)
 		Cil.(file.globals)
 	in
+	Printf.printf "Env:\n %s\n" (Env.to_string (Env.zonk env1));
 	()

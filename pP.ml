@@ -11,6 +11,8 @@ let newline = SP.newline
 
 let comma = SP.(!^ ",")
 
+let colon = SP.(!^ ":")
+
 let (+) = SP.(^-^)
 
 let (++) = SP.(^^)
