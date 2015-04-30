@@ -453,9 +453,13 @@ and Var : sig
 	let compare x y = Pervasives.compare (uniq_of x) (uniq_of y)
 
 	let fv_of (x :t) :Vars.t =
-		match kind_of x with
-		| Eff lb -> Vars.add x (Effects.fv_of (Uref.uget lb))
-		| ______ -> Vars.singleton x
+		if is_meta x
+		then
+			match kind_of x with
+			| Eff lb -> Vars.add x (Effects.fv_of (Uref.uget lb))
+			| ______ -> Vars.singleton x
+		else (* Bound variables are obviously not free *)
+			Vars.none
 
 	let add_effect_lb (x :Var.effect) (lb :Effects.t) :unit =
 		match x with
