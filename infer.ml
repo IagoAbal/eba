@@ -217,13 +217,13 @@ let rec of_exp (env :Env.t)
 	-> let z1, f1, k1 = of_exp env e1 in
 	   let z2, f2, k2 = of_exp env e2 in
 	   let z3, f3 = of_binop env z1 z2 op in
-	   z3, Effects.(f1 + f2 + f3), Constraints.(k1 + k2)
+	   z3, Effects.(f1 + f2 + f3), K.(k1 + k2)
 	| Cil.Question (e1,e2,e3,ty) ->
 	  let _z1, f1, k1 = of_exp env e1 in
 	  let  z2, f2, k2 = of_exp env e2 in
 	  let  z3, f3, k3 = of_exp env e3 in
 	  Unify.(z2 =~ z3);
-	  z2, Effects.(f1 + f2 + f3), Constraints.(k1 + k2 + k3)
+	  z2, Effects.(f1 + f2 + f3), K.(k1 + k2 + k3)
 	| Cil.CastE (ty,e)
 	-> let z, f, k = of_exp env e in
 	   let z1 = Unify.match_shape_with_typ z ty in
@@ -241,16 +241,16 @@ let rec of_exp (env :Env.t)
 	-> of_lval env lv
 
 and of_lval (env :Env.t)
-	: Cil.lval -> shape * Effects.t * Constraints.t
+	: Cil.lval -> shape * Effects.t * K.t
 	= function (lhost,offset) ->
 		let z, f, k = of_lhost env lhost in
 		let z1, f1, k1 = with_offset env z offset in
-		z1, Effects.(f + f1), Constraints.(k + k1)
+		z1, Effects.(f + f1), K.(k + k1)
 
 and with_offset (env: Env.t) (z :shape)
-	: Cil.offset -> shape * Effects.t * Constraints.t
+	: Cil.offset -> shape * Effects.t * K.t
 	= function
-	| Cil.NoOffset      -> z, Effects.none, Constraints.none
+	| Cil.NoOffset      -> z, Effects.none, K.none
 	(* array indexing *)
 	| Cil.Index (e,off) ->
 		let _z0, f0, k0 = of_exp env e in
@@ -263,7 +263,7 @@ and with_offset (env: Env.t) (z :shape)
 	| Cil.Field _ -> Error.not_implemented()
 
 and of_lhost (env :Env.t)
-	: Cil.lhost -> shape * Effects.t * Constraints.t
+	: Cil.lhost -> shape * Effects.t * K.t
 	= function
 	| Cil.Var x ->
 		let sch = Env.find x env in
@@ -275,14 +275,14 @@ and of_lhost (env :Env.t)
 		let z1 = Unify.match_ptr_shape z in
 		z1, f, k
 
-let with_lval_set (env :Env.t) z f k lv : Effects.t * Constraints.t =
+let with_lval_set (env :Env.t) z f k lv : Effects.t * K.t =
 	let z1, f1, k1 = of_lval env lv in
 	let r, z0 = Unify.match_ref_shape z1 in
 	Unify.(z0 =~ z);
-	Effects.(f + f1 + write r), Constraints.(k + k1)
+	Effects.(f + f1 + write r), K.(k + k1)
 
 let of_instr (env :Env.t)
-	: Cil.instr -> Effects.t * Constraints.t
+	: Cil.instr -> Effects.t * K.t
 	= function
 	| Cil.Set (lv,e,_loc)
 	-> let z, f, k = of_exp env e in
@@ -297,7 +297,7 @@ let of_instr (env :Env.t)
 			let ez, ef, ek = of_exp env e in
 			let _r, z1 = Unify.match_ref_shape z in
 			Unify.(z1 =~ ez);
-			Effects.(ef + f), Constraints.(ek + k)
+			Effects.(ef + f), K.(ek + k)
 		)
 		E.(just_var f + f0,k0) zs es in
 	   begin match lv_opt with
@@ -305,13 +305,13 @@ let of_instr (env :Env.t)
 	   | Some lv -> with_lval_set env z' sf sk lv
 	   end
 	(* Oops, unsound :_( *)
-	| Cil.Asm _
-	-> Effects.none, Constraints.none
+	| Cil.Asm _ ->
+		Effects.none, K.none
 
-let sum_f_k : (Effects.t * Constraints.t) list -> Effects.t * Constraints.t
+let sum_f_k : (Effects.t * K.t) list -> Effects.t * K.t
 	= List.fold_left
-		(fun (f, k) (f1, k1) -> Effects.(f1 + f), Constraints.(k1 + k))
-		(Effects.none, Constraints.none)
+		(fun (f, k) (f1, k1) -> Effects.(f1 + f), K.(k1 + k))
+		(Effects.none, K.none)
 
 (* TODO: CIL Cfg builds a control-flow graph on the AST structure,
    each stmt receives an id, that we can use to map stmt to
@@ -320,14 +320,14 @@ let sum_f_k : (Effects.t * Constraints.t) list -> Effects.t * Constraints.t
  *)
 
 let rec of_stmtkind (env :Env.t) (rz :shape)
-	: Cil.stmtkind -> Effects.t * Constraints.t
+	: Cil.stmtkind -> Effects.t * K.t
 	= function
 	| Cil.Instr is
 	-> sum_f_k (List.map (of_instr env) is)
 	| Cil.Return (e_opt,_loc)
 	-> begin match e_opt with
 	   | None   ->
-		   Effects.none, Constraints.none
+		   Effects.none, K.none
 	   | Some e
 	   -> let z, f, k = of_exp env e in
 	      Unify.(z =~ rz);
@@ -337,7 +337,7 @@ let rec of_stmtkind (env :Env.t) (rz :shape)
 	| Cil.Goto _
 	| Cil.Break _
 	| Cil.Continue _
-	-> Effects.none, Constraints.none
+	-> Effects.none, K.none
 	(* TODO: still unsupported GCC extension *)
 	| Cil.ComputedGoto _
 	-> Error.not_implemented()
@@ -345,7 +345,7 @@ let rec of_stmtkind (env :Env.t) (rz :shape)
 	-> let _z0, f0, k0 = of_exp env e in
 	   let      f1, k1 = of_block env rz b1 in
 	   let      f2, k2 = of_block env rz b2 in
-	   Effects.(f0 + f1 + f2), Constraints.(k0 + k1 + k2)
+	   Effects.(f0 + f1 + f2), K.(k0 + k1 + k2)
 	| Cil.Switch _
 	-> Error.not_implemented()
 	(* The last two elements in the tuple refer to CFG instrumentation. *)
