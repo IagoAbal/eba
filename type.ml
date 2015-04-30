@@ -33,6 +33,7 @@ module rec Shape : sig
 	(** A fresh shape variable [Var x]. *)
 	val new_shape : unit -> t
 
+	(* TODO: Rename to zonk ? *)
 	val zonk_shape : t -> t
 
 	(** Shape of a given CIL type. *)
@@ -41,6 +42,9 @@ module rec Shape : sig
 	(** Reference shape to a given CIL type. *)
 	val ref_of : Cil.typ -> t
 
+	val of_varinfo : Cil.varinfo -> t
+
+    (* THINK: Should it be Unify.match_fun ? *)
 	val get_fun : t -> dom_shape * Var.effect * t
 
 	val vsubst : Var.t Subst.t -> t -> t
@@ -103,16 +107,21 @@ module rec Shape : sig
 		| Ref (r,z) -> let r' = zonk_region r in
 		               let z' = zonk_shape z in
 		               Ref(r',z')
-	and zonk_var a :t =
-		let az_opt = Var.read_shape_var a in
-		match az_opt with
-		| None -> Var a
-		| Some z ->
-		  let z' = zonk_shape z in
-		  Var.write_shape_var a z';
-		  z'
+	and zonk_var :Var.t -> t = function
+		| Var.Bound(_,Var.Shp) as a ->
+			Shape.Var a
+		| a ->
+			let az_opt = Var.read_shape_var a in
+			match az_opt with
+			| None -> Var a
+			| Some z ->
+				let z' = zonk_shape z in
+				Var.write_shape_var a z';
+				z'
 
 	and zonk_region :Var.region -> Var.region = function
+		| Var.Bound(_,Var.Reg) as r ->
+			r
 		| Var.MetaReg(id,class_uref) as r
 		-> let class_id = Uref.uget class_uref in
 		   if id = class_id
@@ -122,6 +131,8 @@ module rec Shape : sig
 		-> Error.panic()
 
 	and zonk_effect :Var.effect -> Var.effect = function
+		| Var.Bound(_,Var.Eff _) as f ->
+			f
 		| Var.MetaEff(id,class_uref,lb_uref) as f
 		-> let class_id = Uref.uget class_uref in
 		   if id = class_id
@@ -139,6 +150,7 @@ module rec Shape : sig
 
     and zonk_dom d = List.map zonk_shape d
 
+	(* THINK: on typesig instead ? *)
 	let rec of_typ (ty :Cil.typ) :t =
 		match ty with
 		| Cil.TVoid _
@@ -154,7 +166,9 @@ module rec Shape : sig
 		   let effects = Var.new_effect_var() in
 		   let range = of_typ res in
 		   Fun { domain; effects; range }
-		| _ -> Error.not_implemented()
+		| _ ->
+			Errormsg.log "Not suppoprted type: %a\n" Cil.d_type ty;
+			Error.not_implemented()
 
 	and of_fun_args : _ -> dom_shape = function
 		| []             -> []
@@ -163,6 +177,8 @@ module rec Shape : sig
     and ref_of ty :t =
     	let z = of_typ ty in
     	new_ref_to z
+
+	let of_varinfo x = of_typ Cil.(x.vtype)
 
     let get_fun : t -> dom_shape * Var.effect * t
     	= function
@@ -686,7 +702,8 @@ module Unify =
 			let r = Var.new_region() in
 			unify_var a (Ref (r,z1));
 			r, z1
-		| __________ -> Error.panic()
+		| __________ ->
+			Error.panic_with(Printf.sprintf "Not a ref shape: %s" (Shape.to_string z))
 
 	(* This one is only needed when we get structs ? *)
 	(* TODO: If unification fails,

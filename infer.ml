@@ -9,8 +9,10 @@ module Env =
 	struct
 
 	(* THINK: Global and local env, for the global one we can precompute fv_of
-	   since it will be needed quite often. *)
+	 * since it will be needed quite often. We still need to zonk them!
+	 *)
 
+	(* THINK: Map of varinfoS would facilitate debugging... *)
     module IntMap = Map.Make(Int)
 
 	type type_scheme = shape scheme
@@ -27,6 +29,8 @@ module Env =
 
 	let cardinal = IntMap.cardinal
 
+	let remove x = IntMap.remove Cil.(x.vid)
+
 	let (+::) : Cil.varinfo * type_scheme -> t -> t =
 		fun (x,ty) -> add x ty
 
@@ -38,39 +42,43 @@ module Env =
 			env1
 			env2
 
-	let find (x:Cil.varinfo) (env :t) :type_scheme =
-		match IntMap.Exceptionless.find Cil.(x.vid) env with
+	let find_opt (x:Cil.varinfo) (env :t) :type_scheme option =
+		IntMap.Exceptionless.find Cil.(x.vid) env
+
+	let find x (env :t) :type_scheme =
+		match find_opt x env with
 		| Some sch -> sch
-		| None    -> Error.panic_with("Env.find: not found: " ^ Cil.(x.vname))
+		| None     -> Error.panic_with("Env.find: not found: " ^ Cil.(x.vname))
 
 	let of_list :(Cil.varinfo * type_scheme) list -> t =
 		IntMap.of_enum % Enum.map (fun (x,y) -> Cil.(x.vid),y) % List.enum
 
-	let of_cil_var (x :Cil.varinfo) :t =
+	let of_var (x :Cil.varinfo) :t =
 		let ty = Cil.(x.vtype) in
 		let z = Shape.ref_of ty in
 		singleton x { vars = Vars.empty; body = z }
 
-	let of_cil_vars :Cil.varinfo list -> t =
-		List.fold_left (fun env x -> of_cil_var x +> env) empty
+	let of_vars :Cil.varinfo list -> t =
+		List.fold_left (fun env x -> of_var x +> env) empty
 
-	(* TODO: return env' and env'', env' for observe ? *)
-	let of_fundec (env :t) (fd :Cil.fundec) :shape * t =
-		let fn = Cil.(fd.svar) in
-		let args = Cil.(fd.sformals) in
-		let shp' = Shape.of_typ Cil.(fd.svar.vtype) in
-		let args_shp',_,_  = Shape.get_fun shp' in
-		let sch' = { vars = Vars.empty; body = shp' } in
-		let args_sch' = List.map (fun z ->
-							{ vars = Vars.empty; body = z })
-							args_shp'
+	let fresh_if_absent (x :Cil.varinfo) (env :t) :t =
+		match find_opt x env with
+		| None ->
+			let z = Shape.ref_of Cil.(x.vtype) in
+			let sch = { vars = Vars.none; body = z } in
+			(x,sch) +:: env
+		| Some _ ->
+			env
+
+	let with_formals (args :Cil.varinfo list) (z_args :dom_shape) (env :t) :t =
+		let sch_args =
+			List.map (fun z -> { vars = Vars.none; body = z }) z_args
 		in
-		let args_env = of_list (List.combine args args_sch') in
-		let env' = (fn,sch') +:: (args_env +> env) in
-		shp', env'
+		let env_args = of_list (List.combine args sch_args) in
+		env_args +> env
 
-	let of_fundec_locals (env :t) (fd :Cil.fundec) :t =
-		of_cil_vars Cil.(fd.slocals) +> env
+	let with_locals (xs :Cil.varinfo list) (env :t) :t =
+		of_vars xs +> env
 
 	let fv_of (env :t) :Vars.t =
 		(* FIXME: This is ignoring the constraints... *)
@@ -172,6 +180,7 @@ let of_unop (_env :Env.t) z
  *)
 let of_binop (_env :Env.t) z1 _z2
 	: Cil.binop -> shape * Effects.t
+	(* FIXME: Comparison operators should have Shape.Bot, Effects.none *)
 	= fun _ -> z1, Effects.none
 
 let rec of_exp (env :Env.t)
@@ -313,7 +322,8 @@ let rec of_stmtkind (env :Env.t) (rz :shape)
 	-> sum_f_k (List.map (of_instr env) is)
 	| Cil.Return (e_opt,_loc)
 	-> begin match e_opt with
-	   | None   -> Effects.none, Constraints.none
+	   | None   ->
+		   Effects.none, Constraints.none
 	   | Some e
 	   -> let z, f, k = of_exp env e in
 	      Unify.(z =~ rz);
@@ -350,12 +360,19 @@ and of_stmt (env :Env.t) (rz :shape) (s :Cil.stmt) : E.t * K.t =
 and of_block (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
 	 sum_f_k (List.map (of_stmt env rz) Cil.(b.bstmts))
 
+(** Inference rule for function definitions
+  *
+  * NB: env must include the function itself (we assume it can be recursive).
+  *)
 let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		: shape scheme * K.t =
-	let shp', env' = Env.of_fundec env fd in
+	let fn = Cil.(fd.svar) in
+	let shp' = (Env.find fn env).body in (* TODO: should it be instantiate? *)
+	let _, shp'' = Unify.match_ref_shape shp' in
+	let z_args,f,z_res  = Shape.get_fun shp'' in
+	let env' = Env.with_formals Cil.(fd.sformals) z_args env in
+	let env'' = Env.with_locals Cil.(fd.slocals) env' in
 	let body = Cil.(fd.sbody) in
-	let env'' = Env.of_fundec_locals env' fd in
-	let _,f,z_res  = Shape.get_fun shp' in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
 	let bf, k1 = of_block env'' z_res body in
@@ -367,10 +384,65 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	   What about mutually recursive functions?
 	 *)
 	let k2 = K.add f bf' k1 in
-	generalize env k2 shp'
+	(* THINK: Maybe we should generalize in of_global *)
+	generalize (Env.remove fn env) k2 shp'
 
-let of_global (env :Env.t)
-	: Cil.global -> unit
-	= Error.not_implemented()
+let of_global (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
+	(* THINK: Do we need to do anything here? CIL has this unrollType helper
+	   that should be enough...
+	 *)
+	| Cil.GType _ -> Error.not_implemented()
+	| Cil.GCompTag _
+	| Cil.GCompTagDecl _ -> Error.not_implemented()
+	| Cil.GEnumTag _
+	| Cil.GEnumTagDecl _ -> Error.not_implemented()
+	| Cil.GVarDecl (x,_) ->
+		let xn = Cil.(x.vname) in
+		(* Errormsg.log "Variable declaration: %s : %a\n" xn Cil.d_type Cil.(x.vtype); *)
+		if Hashtbl.mem Cil.builtinFunctions xn
+		then (Errormsg.log "Skipping builtin function: %s\n" xn;
+			  env, k)
+		else Env.fresh_if_absent x env, k
+	| Cil.GVar (x,ii,_) ->
+		let xn = Cil.(x.vname) in
+		let env' = Env.fresh_if_absent x env in
+		Printf.printf "Variable definition %s : %s\n" xn (Shape.to_string (Env.find x env').body);
+		(* THINK: move to of_init *)
+		let k' = Cil.(ii.init) |> Option.map_default (function
+			| Cil.SingleInit e ->
+				let ze, fe, ke = of_exp env e in
+				let _f1, k1 = with_lval_set env' ze fe ke (Cil.var x) in
+				K.(k + k1)
+			| Cil.CompoundInit _ -> Error.not_implemented()
+		) k
+		in
+		env', k'
+	| Cil.GFun (fd,_) ->
+		let fn = Cil.(fd.svar) in
+		Printf.printf "In %s ...\n" Cil.(fn.vname);
+		(* we may know about fn already, if there is any function declaration *)
+		let env' = Env.fresh_if_absent fn env in
+		(* infer *)
+		let sch, k1 = of_fundec env' k fd in
+		Printf.printf "Function %s: %s\n" Cil.(fn.vname) (Shape.to_string sch.body);
+		(* new environment with f generalized,
+		 * this overwrites any previous binding.
+		 *)
+		Env.add fn sch env, k1
+	(* Oooh, we're unsound here :_( *)
+	| Cil.GAsm _
+	| Cil.GPragma _ -> env, k
+	(* Nothing to be done *)
+	| Cil.GText _ -> env, k
 
-let of_file (_ : Cil.file) :unit = Error.not_implemented()
+(* TODO: globinit ? *)
+let of_file (file : Cil.file) :unit =
+	(* TODO: Here we can read axioms *)
+	let env0 = Env.empty in
+	let k0 = K.none in
+	let _ = List.fold_left
+		(fun (env,k) gbl -> of_global env k gbl)
+		(env0,k0)
+		Cil.(file.globals)
+	in
+	()

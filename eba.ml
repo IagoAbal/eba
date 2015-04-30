@@ -16,9 +16,5 @@ let print_fd (fd :Cil.fundec) :unit =
 	output_string stdout fd_str
 
 let _ =
-	let file = Frontc.parse "foo.c" () in
-    let fd = find_fd "f" file in
-	let sch, k = Infer.of_fundec Infer.Env.empty Type.K.none fd in
-	print_fd fd;
-	output_string stdout "------------------\n";
-	Printf.printf "%s\n" Type.(Shape.to_string (sch.body))
+	let file = Frontc.parse "bar.c" () in
+	Infer.of_file file
