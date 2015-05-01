@@ -80,6 +80,10 @@ module Env =
 	let with_locals (xs :Cil.varinfo list) (env :t) :t =
 		of_vars xs +> env
 
+	let zonk :t -> t =
+		let zonk_sch {vars; body} = {vars; body = Shape.zonk_shape body}  in
+		IntMap.map zonk_sch
+
 	let fv_of (env :t) :Vars.t =
 		(* FIXME: This is ignoring the constraints... *)
 		IntMap.fold (fun _ {body = shp} ->
@@ -125,7 +129,7 @@ let generalize (env :Env.t) (k :K.t) (z :shape)
 	: shape scheme * K.t =
 	let zz = Shape.zonk_shape z in
 	let z_fv = Shape.fv_of zz in
-	let env_fv = Env.fv_of env in
+	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs = Vars.diff z_fv env_fv in
 	let k1 = K.minus k vs in
 	let sch = quantify vs zz in
@@ -143,7 +147,7 @@ and principal_effects_e (f :Effects.e) :Effects.e Enum.t =
 	| _____________ -> Enum.singleton f
 
 let observe (env :Env.t) :E.t -> E.t =
-	let env_fv = Env.fv_of env in
+	let env_fv = Env.fv_of (Env.zonk env) in
     let is_observable = function
 		| E.Var x     -> Vars.mem x env_fv
 		| E.Mem(_k,r) -> Vars.mem r env_fv
