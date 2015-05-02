@@ -10,7 +10,7 @@ FILES[] =
     env
     infer
 
-OCAMLPACKS[] += batteries cil smart_print
+OCAMLPACKS[] += batteries cil smart_print cmdliner
 OCAMLFLAGS += -thread
 
 OCamlLibrary(libeba, $(FILES))

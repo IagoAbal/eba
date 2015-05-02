@@ -1,20 +1,21 @@
 
 open Batteries
+open Cmdliner
 
-let find_fd (vn :string) (file :Cil.file) :Cil.fundec =
-	let find = function
-		| Cil.GFun (fd,_) when Cil.(fd.svar.vname = vn)
-		-> Some fd
-		| _____other_____
-		-> None
-	in
-	List.find_map find Cil.(file.globals)
-
-let print_fd (fd :Cil.fundec) :unit =
-	let fd_doc = Cil.d_global () (Cil.GFun(fd,Cil.builtinLoc)) in
-	let fd_str = Pretty.sprint ~width:60 fd_doc in
-	output_string stdout fd_str
-
-let _ =
-	let file = Frontc.parse "bar.c" () in
+let infer_file fn =
+	let file = Frontc.parse fn () in
 	Infer.of_file file
+
+let infer_files = List.iter infer_file
+
+(* CLI *)
+
+let files = Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE")
+
+let cmd =
+	let doc = "Effect-based analysis of C programs" in
+	let man = [ `S "DESCRIPTION"; `P "Author: Iago Abal <mail@iagoabal.eu>.";] in
+	Term.(pure infer_files $ files),
+	Term.info "eba" ~version:"0.1.0" ~doc ~man
+
+let () = match Term.eval cmd with `Error _ -> exit 1 | _ -> exit 0
