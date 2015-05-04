@@ -36,6 +36,12 @@ module rec Shape : sig
 	(* TODO: Rename to zonk ? *)
 	val zonk_shape : t -> t
 
+	(* THINK: Move to Var ? *)
+	val zonk_region : Var.region -> Var.region
+
+	(* THINK: Move to Var ? *)
+	val zonk_effect : Var.effect -> Var.effect
+
 	(** Shape of a given CIL type. *)
 	val of_typ : Cil.typ -> t
 
@@ -133,18 +139,24 @@ module rec Shape : sig
 	and zonk_effect :Var.effect -> Var.effect = function
 		| Var.Bound(_,Var.Eff _) as f ->
 			f
-		| Var.MetaEff(id,class_uref,lb_uref) as f
-		-> let class_id = Uref.uget class_uref in
-		   if id = class_id
-		   then f
-		   else Var.MetaEff(class_id,class_uref,lb_uref)
+		| Var.MetaEff(id,class_uref,lb_uref) ->
+			let class_id = Uref.uget class_uref in
+			(* Here we always zonk because, even if the id
+			 * didn't change, the variable may have gotten
+			 * new subeffecting constraints as a result of
+			 * unification.
+			 *)
+			let lb  = Uref.uget lb_uref in
+			let lb' = Effects.zonk lb in
+			Uref.uset lb_uref lb';
+			Var.MetaEff(class_id,class_uref,lb_uref)
 		| __other__
 		-> Error.panic()
 
 	and zonk_fun f =
 		let { domain = dom; effects = ef; range = res } = f in
 		{ domain  = zonk_dom dom
-		; effects = ef
+		; effects = zonk_effect ef
 		; range   = zonk_shape res
 		}
 
@@ -252,6 +264,8 @@ and Effects : sig
 
 	val enum : t -> e Enum.t
 
+	val zonk : t -> t
+
 	val pp : t -> PP.doc
 
 	val to_string : t -> string
@@ -318,6 +332,13 @@ and Effects : sig
 	let of_enum = EffectSet.of_enum
 
 	let enum = EffectSet.enum
+
+	let zonk_e = function
+		| Var f    -> Var (Shape.zonk_effect f)
+		| Mem(k,r) -> let r' = Shape.zonk_region r in
+					  Mem(k,r')
+
+	let zonk = EffectSet.map zonk_e
 
 	let pp_kind = function
 		| Read  -> PP.(!^ "read")

@@ -63,7 +63,7 @@ let observe (env :Env.t) :E.t -> E.t =
 		| E.Var x     -> Vars.mem x env_fv
 		| E.Mem(_k,r) -> Vars.mem r env_fv
 	in
-	E.of_enum % Enum.filter is_observable % principal_effects
+	E.of_enum % Enum.filter is_observable % principal_effects % E.zonk
 
 (* TODO: We should keep "precision" info associated with
    region variables. E.g. to know if something is the result
