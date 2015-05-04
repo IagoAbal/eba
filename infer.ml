@@ -319,13 +319,13 @@ let of_global (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
 		let xn = Cil.(x.vname) in
 		(* Errormsg.log "Variable declaration: %s : %a\n" xn Cil.d_type Cil.(x.vtype); *)
 		if Hashtbl.mem Cil.builtinFunctions xn
-		then (Errormsg.log "Skipping builtin function: %s\n" xn;
+		then (Log.info "Skipping builtin function: %s\n" xn;
 			  env, k)
 		else Env.fresh_if_absent x env, k
 	| Cil.GVar (x,ii,_) ->
 		let xn = Cil.(x.vname) in
 		let env' = Env.fresh_if_absent x env in
-		Printf.printf "Variable definition %s : %s\n" xn (Shape.to_string (Env.find x env').body);
+		Log.info "Global variable %s : %s\n" xn (Shape.to_string (Env.find x env').body);
 		(* THINK: move to of_init *)
 		let k' = Cil.(ii.init) |> Option.map_default (function
 			| Cil.SingleInit e ->
@@ -338,12 +338,12 @@ let of_global (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
 		env', k'
 	| Cil.GFun (fd,_) ->
 		let fn = Cil.(fd.svar) in
-		Printf.printf "In %s ...\n" Cil.(fn.vname);
+		Log.debug "In function %s\n" Cil.(fn.vname);
 		(* we may know about fn already, if there is any function declaration *)
 		let env' = Env.fresh_if_absent fn env in
 		(* infer *)
 		let sch, k1 = of_fundec env' k fd in
-		Printf.printf "Function %s: %s\n" Cil.(fn.vname) (Shape.to_string sch.body);
+		Log.info "Function %s : %s\n" Cil.(fn.vname) (Shape.to_string sch.body);
 		(* new environment with f generalized,
 		 * this overwrites any previous binding.
 		 *)
@@ -364,5 +364,5 @@ let of_file (file : Cil.file) :unit =
 		(env0,k0)
 		Cil.(file.globals)
 	in
-	Printf.printf "Env:\n %s\n" (Env.to_string (Env.zonk env1));
+	Log.info "Env:\n %s\n" (Env.to_string (Env.zonk env1));
 	()
