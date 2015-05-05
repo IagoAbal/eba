@@ -290,7 +290,16 @@ and Effects : sig
 	module EffectSet = Set.Make(
 		struct
 			type t = e
-			let compare = Pervasives.compare
+			let compare f1 f2 =
+				match (f1,f2) with
+				| (Var x,Var y) -> Var.compare x y
+				| (Mem (k1,r1),Mem (k2,r2)) ->
+					let cmp_k = Pervasives.compare k1 k2 in
+					if cmp_k = 0
+					then Var.compare r1 r2
+					else cmp_k
+				| (Var _,Mem _) -> -1
+				| (Mem _,Var _) -> 1
 		end
 		)
 
