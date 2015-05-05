@@ -27,23 +27,24 @@ let instantiate :shape scheme -> shape * K.t =
 	shp', k
 
 (* If we generalize meta-type variables we could just write the meta variables and then zonk, instead of substitution. *)
-let quantify (vs :Vars.t) (z :shape)
+let quantify (r :Var.region) (vs :Vars.t) (z :shape)
 	: shape scheme =
 	let ys = Vars.to_list vs in
 	let xs = List.map (Var.fresh % Var.kind_of) ys in
 	let s = Subst.mk (List.combine ys xs) in
 	let z' = Shape.vsubst s z in
-	{ vars = Vars.of_list xs; body = z' }
+	{ vars = Vars.of_list xs; body = Shape.Ref(r,z') }
 
 (* generalize effect-free shapes, such as functions *)
-let generalize (env :Env.t) (k :K.t) (z :shape)
+let generalize (env :Env.t) (k :K.t) (r: Var.region) (z :shape)
 	: shape scheme * K.t =
+	let rr = Shape.zonk_region r in
 	let zz = Shape.zonk_shape z in
 	let z_fv = Shape.fv_of zz in
 	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs = Vars.diff z_fv env_fv in
 	let k1 = K.minus k vs in
-	let sch = quantify vs zz in
+	let sch = quantify rr vs zz in
 	sch, k1
 
 let rec principal_effects f =
@@ -283,7 +284,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		: shape scheme * K.t =
 	let fn = Cil.(fd.svar) in
 	let shp' = (Env.find fn env).body in (* TODO: should it be instantiate? *)
-	let _, shp'' = Unify.match_ref_shape shp' in
+	let f_r, shp'' = Unify.match_ref_shape shp' in
 	let z_args,f,z_res  = Shape.get_fun shp'' in
 	let args_bs = List.map2 (fun x y -> x, Scheme.of_shape y)
 		Cil.(fd.sformals)
@@ -304,7 +305,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	 *)
 	let k2 = K.add f bf' k1 in
 	(* THINK: Maybe we should generalize in of_global *)
-	generalize (Env.remove fn env) k2 shp'
+	generalize (Env.remove fn env) k2 f_r shp''
 
 let of_global (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
 	(* THINK: Do we need to do anything here? CIL has this unrollType helper
