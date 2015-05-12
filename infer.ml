@@ -20,26 +20,29 @@ open Shape
 let instantiate :shape scheme -> shape * K.t =
 	fun { vars; body = shp} ->
 	let qvs = Vars.to_list vars in
-	let mtvs = Var.of_bounds qvs in
+	let mtvs = Var.meta_of_list qvs in
 	let s = Subst.mk (List.combine qvs mtvs) in
 	let shp' = Shape.vsubst s shp in
 	let k = Vars.filter Var.is_effect (fv_of shp') in
 	shp', k
 
+(* THINK: move this into type because it knows a lot about the internals *)
 (* If we generalize meta-type variables we could just write the meta variables and then zonk, instead of substitution. *)
-let quantify (r :Var.region) (vs :Vars.t) (z :shape)
+let quantify (r :Region.t) (vs :Vars.t) (z :shape)
 	: shape scheme =
 	let ys = Vars.to_list vs in
-	let xs = List.map (Var.fresh % Var.kind_of) ys in
-	let s = Subst.mk (List.combine ys xs) in
-	let z' = Shape.vsubst s z in
-	{ vars = Vars.of_list xs; body = Shape.Ref(r,z') }
+	let xs = Var.bound_of_list ys in
+	(* write into vs's *)
+	List.iter2 Var.write ys xs;
+	let xs' = Vars.zonk_lb (Vars.of_list xs) in
+	let z' = Shape.zonk z in
+	{ vars = xs'; body = Shape.Ref(r,z') }
 
 (* generalize effect-free shapes, such as functions *)
-let generalize (env :Env.t) (k :K.t) (r: Var.region) (z :shape)
+let generalize (env :Env.t) (k :K.t) (r: Region.t) (z :shape)
 	: shape scheme * K.t =
-	let rr = Shape.zonk_region r in
-	let zz = Shape.zonk_shape z in
+	let rr = Region.zonk r in
+	let zz = Shape.zonk z in
 	let z_fv = Shape.fv_of zz in
 	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs = Vars.diff z_fv env_fv in
@@ -53,7 +56,7 @@ let rec principal_effects f =
 and principal_effects_e (f :Effects.e) :Effects.e Enum.t =
 	match f with
 	| Effects.Var x ->
-		let en = principal_effects (Uref.uget (Var.lb_of x)) in
+		let en = principal_effects (EffectVar.lb_of x) in
 		Enum.push en f;
 		en
 	| _____________ -> Enum.singleton f
@@ -61,8 +64,8 @@ and principal_effects_e (f :Effects.e) :Effects.e Enum.t =
 let observe (env :Env.t) :E.t -> E.t =
 	let env_fv = Env.fv_of (Env.zonk env) in
     let is_observable = function
-		| E.Var x     -> Vars.mem x env_fv
-		| E.Mem(_k,r) -> Vars.mem r env_fv
+		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
+		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
 	in
 	E.of_enum % Enum.filter is_observable % principal_effects % E.zonk
 
@@ -73,7 +76,7 @@ let observe (env :Env.t) :E.t -> E.t =
 
 let of_const : Cil.constant -> shape
 	= function
-	| Cil.CInt64 _ -> Shape.new_shape()
+	| Cil.CInt64 _ -> Shape.fresh()
 	| Cil.CStr _   -> Bot
 	| Cil.CWStr _  -> Bot
 	| Cil.CChr _   -> Bot

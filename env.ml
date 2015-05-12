@@ -55,7 +55,7 @@ let with_bindings bs env :t = of_bindings bs +> env
 let with_fresh_bindings = with_bindings % Scheme.fresh_bindings
 
 let zonk :t -> t =
-	let zonk_sch {vars; body} = {vars; body = Shape.zonk_shape body}  in
+	let zonk_sch {vars; body} = {vars; body = Shape.zonk body}  in
 	VarMap.map zonk_sch
 
 let fv_of env :Vars.t =
