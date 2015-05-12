@@ -83,11 +83,11 @@ let of_const : Cil.constant -> shape
 	| Cil.CReal _  -> Bot
 	| Cil.CEnum _  -> Bot
 
-(* The three unary operators -, ~, and ! do not affect the shape
-	   of the expression *)
 let of_unop (_env :Env.t) z
-	: Cil.unop -> shape * Effects.t
-	= fun _ -> z, Effects.none
+		: Cil.unop -> shape * Effects.t
+	= function
+	| Cil.LNot   -> Shape.Bot, Effects.none
+	| __other__  -> z, Effects.none
 
 (* For now, we just pick the shape of the first argument, which in CIL,
    it's always the pointer argument. This may be unsound in some corner
@@ -98,9 +98,18 @@ let of_unop (_env :Env.t) z
 		 MinusPP -> warn if after unification the two regions are different
  *)
 let of_binop (_env :Env.t) z1 _z2
-	: Cil.binop -> shape * Effects.t
-	(* FIXME: Comparison operators should have Shape.Bot, Effects.none *)
-	= fun _ -> z1, Effects.none
+		: Cil.binop -> shape * Effects.t
+	= function
+	| Cil.Eq
+	| Cil.Ne
+	| Cil.Lt
+	| Cil.Le
+	| Cil.Gt
+	| Cil.Ge
+	| Cil.LAnd
+	| Cil.LOr
+		-> Shape.Bot, Effects.none
+	| __other__ -> z1, Effects.none
 
 let rec of_exp (env :Env.t)
 	: Cil.exp -> shape * Effects.t * K.t
