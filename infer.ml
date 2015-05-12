@@ -77,8 +77,8 @@ let observe (env :Env.t) :E.t -> E.t =
 let of_const : Cil.constant -> shape
 	= function
 	| Cil.CInt64 _ -> Shape.fresh()
-	| Cil.CStr _   -> Bot
-	| Cil.CWStr _  -> Bot
+	| Cil.CStr _
+	| Cil.CWStr _  -> Shape.fresh_ptr_to Bot
 	| Cil.CChr _   -> Bot
 	| Cil.CReal _  -> Bot
 	| Cil.CEnum _  -> Bot

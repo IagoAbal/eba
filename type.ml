@@ -45,6 +45,9 @@ module rec Shape : sig
 	(** A fresh shape variable [Var x]. *)
 	val fresh : unit -> t
 
+	(** A fresh pointer-shape [ptr ref[r] z] *)
+	val fresh_ptr_to : t -> t
+
 	val uniq_of : var -> Uniq.t
 
 	val is_meta : var -> bool
@@ -142,6 +145,10 @@ module rec Shape : sig
 
 	let fresh () :t =
 		Var(meta_var())
+
+	let fresh_ptr_to z :t =
+		let r = Region.meta() in
+		Ptr(Ref(r,z))
 
 	let uniq_of = function
 		| Meta(u,_) -> u
