@@ -31,8 +31,6 @@ val of_bindings : (Cil.varinfo * shape scheme) list -> t
 (** [with_bindings bs env = of_bindings bs +> env] *)
 val with_bindings : (Cil.varinfo * shape scheme) list -> t -> t
 
-val with_fresh_bindings : Cil.varinfo list -> t -> t
-
 val zonk : t -> t
 
 val fv_of : t -> Vars.t

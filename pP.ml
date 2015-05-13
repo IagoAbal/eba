@@ -31,4 +31,6 @@ let space_sep = separate space
 
 let comma_sep = separate comma
 
+let indent = SP.indent
+
 let to_string = SP.to_string 70 4

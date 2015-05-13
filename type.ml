@@ -656,7 +656,7 @@ and Effects : sig
 		| Free  -> PP.(!^ "free")
 
 	let pp_e = function
-		| Var x    -> EffectVar.pp x
+		| Var x    -> EffectVar.pp_lb x
 		| Mem(k,r) -> PP.(pp_kind k + brackets(Region.pp r))
 
 	let pp fs =
@@ -921,11 +921,16 @@ module Scheme : sig
 	val of_varinfo : Cil.varinfo -> shape scheme
 	val fresh_binding : Cil.varinfo -> Cil.varinfo * shape scheme
 	val fresh_bindings : Cil.varinfo list -> (Cil.varinfo * shape scheme) list
+	val fv_of : shape scheme -> Vars.t
+	val zonk : shape scheme -> shape scheme
 end = struct
 	let of_shape z = { vars = Vars.none; body = z }
 	let of_varinfo x = of_shape (Shape.of_varinfo x)
 	let fresh_binding x = x, of_varinfo x
 	let fresh_bindings = List.map fresh_binding
+	let fv_of sch = Shape.fv_of sch.body
+	(* THINK: also Vars.zonk_lb ? *)
+	let zonk sch = { sch with body = Shape.zonk sch.body }
 end
 
 (* Unification *)

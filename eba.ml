@@ -4,7 +4,8 @@ open Cmdliner
 
 let infer_file fn =
 	let file = Frontc.parse fn () in
-	Infer.of_file file
+	let _ = Infer.of_file file in
+	()
 
 (* CLI *)
 

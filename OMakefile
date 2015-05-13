@@ -9,6 +9,8 @@ FILES[] =
     uniq
     type
     env
+    funAbs
+    fileAbs
     infer
 
 OCAMLPACKS[] += batteries cil smart_print cmdliner dolog
