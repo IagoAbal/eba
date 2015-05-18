@@ -54,25 +54,13 @@ let generalize_fun env k r z fnAbs
 	FunAbs.zonk fnAbs;
 	sch, k1
 
-(* TODO: We could move this to Effects, but only if we move EffectVar as a submodule Effects.Var *)
-let rec principal_effects f =
-	Enum.concat (Enum.map principal_effects_e (Effects.enum f))
-
-and principal_effects_e (f :Effects.e) :Effects.e Enum.t =
-	match f with
-	| Effects.Var x ->
-		let en = principal_effects (EffectVar.lb_of x) in
-		Enum.push en f;
-		en
-	| _____________ -> Enum.singleton f
-
 let observe (env :Env.t) :E.t -> E.t =
 	let env_fv = Env.fv_of (Env.zonk env) in
     let is_observable = function
 		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
 		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
 	in
-	E.of_enum % Enum.filter is_observable % principal_effects % E.zonk
+	E.of_enum % Enum.filter is_observable % E.enum_principal % E.zonk
 
 (* TODO: We should keep "precision" info associated with
    region variables. E.g. to know if something is the result
@@ -124,7 +112,7 @@ let rec of_exp (env :Env.t)
 	| Cil.Lval lv
 	-> let z, f, k = of_lval env lv in
 	   let r, z0 = Unify.match_ref_shape z in
-	   let f' = E.(f + read r) in
+	   let f' = E.(f +. reads r) in
 	   z0, f', k
 	(* Even though effectively [unsigned int] or the like,
 	 * it seems a terrible idea to cast [size_t] to a
@@ -187,7 +175,7 @@ and with_offset (env: Env.t) (z :shape)
 		let r, z1 = Unify.match_ref_shape z in
 		(* z = ref ptr z2 *)
 		let z2 = Unify.match_ptr_shape z1 in
-		z2, Effects.(f0 + read r), k0
+		z2, Effects.(f0 +. reads r), k0
 	(* record field *)
 	| Cil.Field _ -> Error.not_implemented()
 
@@ -208,7 +196,7 @@ let with_lval_set (env :Env.t) z f k lv : Effects.t * K.t =
 	let z1, f1, k1 = of_lval env lv in
 	let r, z0 = Unify.match_ref_shape z1 in
 	Unify.(z0 =~ z);
-	Effects.(f + f1 + write r), K.(k + k1)
+	Effects.(f + f1 +. writes r), K.(k + k1)
 
 let of_instr (env :Env.t)
 	: Cil.instr -> Effects.t * K.t

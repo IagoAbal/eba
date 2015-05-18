@@ -542,21 +542,29 @@ and Effects : sig
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
 
-	type t
+	module EffectSet : Set.S with type elt := e
+
+	type t = EffectSet.t
 
 	val none : t
 
-	val read : r:Region.t -> t
+	val reads : r:Region.t -> e
 
-	val write : r:Region.t -> t
+	val writes : r:Region.t -> e
 
 	val just_var : EffectVar.t -> t
+
+	val mem : e -> t -> bool
+
+	val (+.) : t -> e -> t
 
 	val (+) : t -> t -> t
 
 	val filter : (e -> bool) -> t -> t
 
 	val remove : e -> t -> t
+
+	val compare : t -> t -> int
 
 	val fv_of : t -> Vars.t
 
@@ -565,6 +573,10 @@ and Effects : sig
 	val of_enum : e Enum.t -> t
 
 	val enum : t -> e Enum.t
+
+	val enum_principal : t -> e Enum.t
+
+	val principal : t -> t
 
 	val zonk : t -> t
 
@@ -609,13 +621,15 @@ and Effects : sig
 
 	let just = EffectSet.singleton
 
-	let read ~r = just (mk_mem Read r)
+	let reads ~r = mk_mem Read r
 
-	let write ~r = just (mk_mem Write r)
+	let writes ~r = mk_mem Write r
 
 	let just_var x = just (mk_var x)
 
 	let add = EffectSet.add
+
+	let mem = EffectSet.mem
 
 	let (+.) es e = add e es
 
@@ -624,6 +638,8 @@ and Effects : sig
 	let filter = EffectSet.filter
 
 	let remove = EffectSet.remove
+
+	let compare = EffectSet.compare
 
 	let fv_of xs = Vars.sum (List.map (function
 		| Var x    -> EffectVar.fv_of x
@@ -641,6 +657,19 @@ and Effects : sig
 	let of_enum = EffectSet.of_enum
 
 	let enum = EffectSet.enum
+
+	let rec enum_principal f =
+		Enum.concat (Enum.map principal_of_e (enum f))
+
+	and principal_of_e (f :e) :e Enum.t =
+		match f with
+		| Var x ->
+			let en = enum_principal (EffectVar.lb_of x) in
+			Enum.push en f;
+			en
+		| _____ -> Enum.singleton f
+
+	let principal f = of_enum (enum_principal f)
 
 	let zonk_e = function
 		| Var f    -> Var (EffectVar.zonk f)
