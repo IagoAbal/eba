@@ -3,6 +3,10 @@ open Batteries
 
 let compare_on f x y = Pervasives.compare (f x) (f y)
 
+let match_pair = function
+	| [a;b] -> (a,b)
+	| ____  -> Error.panic_with "match_pair: not a 2-element list"
+
 module Varinfo =
 struct
 
@@ -15,6 +19,21 @@ struct
 	let equal x y = compare x y = 0
 
 	let hash = Hashtbl.hash
+
+end
+
+module Exp =
+struct
+
+	type t = Cil.exp
+
+	(* Convert from CIL's Pretty.doc to our PP.doc *)
+	let pp e :PP.doc =
+		let e_doc = Cil.d_exp () e in
+		let e_str = Pretty.sprint ~width:60 e_doc in
+		PP.(!^ e_str)
+
+	let to_string = PP.to_string % pp
 
 end
 

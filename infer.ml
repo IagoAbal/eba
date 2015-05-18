@@ -245,6 +245,8 @@ let sum_f_k : (Effects.t * K.t) list -> Effects.t * K.t
    instructions.
  *)
 
+(* THINK: If we transform the code with prepareCFG we don't need to handle [Switch] *)
+
 let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	: Cil.stmtkind -> Effects.t * K.t
 	= function

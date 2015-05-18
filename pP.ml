@@ -17,6 +17,8 @@ let (+) = SP.(^-^)
 
 let (++) = SP.(^^)
 
+let bool = SP.OCaml.bool
+
 let int = SP.OCaml.int
 
 let parens = SP.parens
@@ -27,10 +29,14 @@ let brackets = SP.brakets
 
 let separate = SP.separate
 
+let newline_sep = separate newline
+
 let space_sep = separate space
 
 let comma_sep = separate comma
 
 let indent = SP.indent
+
+let words = SP.words
 
 let to_string = SP.to_string 70 4

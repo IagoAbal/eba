@@ -12,6 +12,8 @@ FILES[] =
     funAbs
     fileAbs
     infer
+    pathTree
+    checkLocalUninit
 
 OCAMLPACKS[] += batteries cil smart_print cmdliner dolog
 OCAMLFLAGS += -thread

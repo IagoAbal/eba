@@ -2,10 +2,20 @@
 open Batteries
 open Cmdliner
 
+module L = LazyList
+
+module CLU = CheckLocalUninit
+
 let infer_file fn =
 	let file = Frontc.parse fn () in
-	let _ = Infer.of_file file in
-	()
+	let fileAbs = Infer.of_file file in
+	let rs = CLU.in_file file fileAbs in
+	match L.get rs with
+	| Some (r,_) ->
+		Log.info "Potential bug found:\n%s\n"
+			(PP.to_string (CLU.pp_report r))
+	| None   -> ()
+
 
 (* CLI *)
 

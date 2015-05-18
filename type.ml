@@ -546,6 +546,8 @@ and Effects : sig
 
 	type t = EffectSet.t
 
+	val (=.) : e -> e -> bool
+
 	val none : t
 
 	val reads : r:Region.t -> e
@@ -598,24 +600,27 @@ and Effects : sig
 	let mk_mem ~k ~r =
 		Mem(k,r)
 
+	let compare_e f1 f2 =
+		match (f1,f2) with
+		| (Var x,Var y) -> EffectVar.compare x y
+		| (Mem (k1,r1),Mem (k2,r2)) ->
+			let cmp_k = Pervasives.compare k1 k2 in
+			if cmp_k = 0
+			then Region.compare r1 r2
+			else cmp_k
+		| (Var _,Mem _) -> -1
+		| (Mem _,Var _) -> 1
 
 	module EffectSet = Set.Make(
 		struct
 			type t = e
-			let compare f1 f2 =
-				match (f1,f2) with
-				| (Var x,Var y) -> EffectVar.compare x y
-				| (Mem (k1,r1),Mem (k2,r2)) ->
-					let cmp_k = Pervasives.compare k1 k2 in
-					if cmp_k = 0
-					then Region.compare r1 r2
-					else cmp_k
-				| (Var _,Mem _) -> -1
-				| (Mem _,Var _) -> 1
+			let compare = compare_e
 		end
 		)
 
 	type t = EffectSet.t
+
+	let (=.) e1 e2 = compare_e e1 e2 = 0
 
 	let none = EffectSet.empty
 
