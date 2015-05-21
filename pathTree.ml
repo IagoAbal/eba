@@ -42,6 +42,33 @@ let if_not_visited visited st f =
 	then Nil
 	else f()
 
+(* Group instructions by location
+ *
+ * CIL instruction blocks include instructions comming from
+ * different statements in the program. We are interested in
+ * group these instructions by location. On the way, we also
+ * compute the effects for each statement, and the sum of
+ * effects.
+ *
+ * TODO: split this function into two, one groups the
+ * instructions (which can go into Utils) and the other
+ * takes the effects.
+ *)
+let group_by_loc fnAbs instrs :(stmt * E.t) list * E.t =
+	assert(not(List.is_empty instrs));
+	let iss = List.group_consecutive Utils.instr_same_loc instrs in
+	let stmts = iss |> List.map (fun is ->
+		let loc = Cil.get_instrLoc (List.hd is) in
+		let stmt = Stmt(is,loc) in
+		let ef = FunAbs.effect_of fnAbs loc in
+		stmt, ef
+	) in
+	let effects = List.fold_left (fun acc (_,ef) ->
+		E.(ef + acc)
+	) E.none stmts
+	in
+	stmts, effects
+
 let rec generate fnAbs visited st :t =
 	if_not_visited visited st (fun () ->
 		let visited' = States.add st visited in
@@ -49,14 +76,16 @@ let rec generate fnAbs visited st :t =
 		let sk = Cil.(node.skind) in
 		match sk with
 		| Cil.Instr instrs ->
-			let loc = Cil.get_stmtLoc sk in
-			let ef = FunAbs.effect_of fnAbs loc in
+			let succs = Cil.(node.succs) in
+			assert(not(List.is_empty succs));
+			let node' = List.hd succs in
+			let iss, ef = group_by_loc fnAbs instrs in
 			let effects' = E.(ef + effects) in
-			let node' = List.hd Cil.(node.succs) in
 			let st' = { node = node'; effects = effects' } in
 			let next = lazy(generate fnAbs visited' st') in
-			let stmt = Stmt(instrs,loc) in
-			Seq(stmt,ef,next)
+			Lazy.force(List.fold_right (fun (s,ef) nxt ->
+				lazy(Seq(s,ef,nxt))
+			) iss next)
 		| Cil.Return(e_opt,loc) ->
 			let ef = FunAbs.effect_of fnAbs loc in
 			let rexp = Rexp(e_opt,loc) in

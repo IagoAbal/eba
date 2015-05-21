@@ -3,6 +3,10 @@ open Batteries
 
 let compare_on f x y = Pervasives.compare (f x) (f y)
 
+let equal_on f x y = (f x) = (f y)
+
+let instr_same_loc = equal_on Cil.get_instrLoc
+
 let match_pair = function
 	| [a;b] -> (a,b)
 	| ____  -> Error.panic_with "match_pair: not a 2-element list"
