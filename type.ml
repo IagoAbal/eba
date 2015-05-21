@@ -21,6 +21,7 @@ module rec Shape : sig
 		 *)
 		; effects : EffectVar.t
 		; range   : result
+		; varargs : bool
 		}
 
 	and args = t list
@@ -86,7 +87,7 @@ module rec Shape : sig
 		var : var -> 'a ;
 		bot : 'a ;
 		ptr : 'a -> 'a ;
-		fn  : 'a * 'a list * EffectVar.t -> 'a ;
+		fn  : 'a * 'a list * bool * EffectVar.t -> 'a ;
 		rf  : Region.t -> 'a -> 'a
 	}
 
@@ -114,6 +115,7 @@ module rec Shape : sig
 		{ domain  : args
 		; effects : EffectVar.t
 		; range   : result
+		; varargs : bool
 		}
 
 	and args = t list
@@ -202,6 +204,7 @@ module rec Shape : sig
 		{ domain  = zonk_dom f.domain
 		; effects = EffectVar.zonk f.effects
 		; range   = zonk f.range
+		; varargs = f.varargs
 		}
     and zonk_dom d = List.map zonk d
 
@@ -216,11 +219,11 @@ module rec Shape : sig
 		| Cil.TPtr(ty,_)
 		| Cil.TArray(ty,_,_)
 		-> Ptr (ref_of ty)
-		| Cil.TFun(res,Some args,false,_)
+		| Cil.TFun(res,Some args,varargs,_)
 		-> let domain = of_args args in
 		   let effects = EffectVar.meta() in
 		   let range = of_typ res in
-		   Fun { domain; effects; range }
+		   Fun { domain; effects; range; varargs }
 		| _ ->
 			Log.error "Type not supported\n"; (* TODO: Cil.d_type ty *)
 			Error.not_implemented()
@@ -256,17 +259,17 @@ module rec Shape : sig
 	and vsubst_var s a =
 		let x = Var.Shape a in
 		Var.to_shape (Subst.find_default x x s)
-    and vsubst_fun s = fun { domain; effects; range } ->
+    and vsubst_fun s = fun { domain; effects; range; varargs } ->
     	let d' = List.map (vsubst s) domain in
     	let f' = EffectVar.vsubst s effects in
     	let r' = vsubst s range in
-    	{ domain = d'; effects = f'; range = r' }
+    	{ domain = d'; effects = f'; range = r'; varargs }
 
 	type 'a fold = {
 		var : var -> 'a ;
 		bot : 'a ;
 		ptr : 'a -> 'a ;
-		fn  : 'a * 'a list * EffectVar.t -> 'a ;
+		fn  : 'a * 'a list * bool * EffectVar.t -> 'a ;
 		rf  : Region.t -> 'a -> 'a
 	}
 
@@ -276,10 +279,10 @@ module rec Shape : sig
     	| Ptr z    -> f.ptr (fold f z)
     	| Fun fz   -> f.fn (fold_fun f fz)
     	| Ref(r,z) -> f.rf r (fold f z)
-	and fold_fun f { domain; effects; range } =
+	and fold_fun f { domain; effects; range; varargs } =
 		let v_range = fold f range in
 		let v_domain = fold_args f domain in
-		v_range, v_domain, effects
+		v_range, v_domain, varargs, effects
 	and fold_args f args = args |> List.map (fold f)
 
 	let rec pp = function
@@ -292,14 +295,18 @@ module rec Shape : sig
 		let vt_str = if is_meta a then "?" else "'" in
 		let id_pp = Uniq.pp (uniq_of a) in
 		PP.(!^ vt_str + !^ "z" + id_pp)
-	and pp_fun = fun {domain; effects; range} ->
-		let args_pp = pp_args domain in
+	and pp_fun = fun {domain; effects; range; varargs} ->
+		let args_pp = pp_args domain varargs in
 		let res_pp = pp range in
 		let eff_pp = EffectVar.pp_lb effects in
 		let arr_pp = PP.(!^ "==" + eff_pp + !^ "==>") in
 		PP.(parens(args_pp ++ arr_pp ++ res_pp))
 	(* THINK: Should I turn it into PP.tuple ~pp ? *)
-	and pp_args args = PP.parens (PP.comma_sep (List.map pp args))
+	and pp_args args varargs =
+		let pp_varargs =
+			if varargs then PP.(comma ++ !^ "...") else PP.empty
+		in
+		PP.(parens (comma_sep (List.map pp args) + pp_varargs))
 
 	let to_string = PP.to_string % pp
 
@@ -594,6 +601,9 @@ and Effects : sig
 
 	val just_var : EffectVar.t -> t
 
+	(** Read all memory regions of a given shape. *)
+	val fully_read : Shape.t -> t
+
 	val mem : e -> t -> bool
 
 	val (+.) : t -> e -> t
@@ -677,6 +687,18 @@ and Effects : sig
 	let (+.) es e = add e es
 
 	let (+) = EffectSet.union
+
+	let fully_read z =
+		let open Shape in
+		let f = {
+			var = const none ;
+			bot = none ;
+			ptr = identity ;
+			rf  = (fun r v -> v +. reads r) ;
+			fn  = const none
+		}
+		in
+		fold f z
 
 	let filter = EffectSet.filter
 

@@ -1,7 +1,11 @@
 
+(* TODO: Use CIL's Pretty instead *)
+
 module SP = SmartPrint
 
 type doc = SmartPrint.t
+
+let empty = SP.empty
 
 let (!^) = SP.(!^)
 

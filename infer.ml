@@ -204,7 +204,10 @@ let of_instr (env :Env.t)
 	-> (* z' fn(zs) | f *)
 	   let z0, f0, k0 = of_exp env fn in
 	   let zs, f, z' = Shape.get_fun z0 in
-	   (* evaluation: sum of effects and constraints *)
+	   let no_args = List.length zs in
+	   assert(List.length es >= no_args);
+	   let (es_args,es_varargs) = List.split_at no_args es in
+	   (* arguments *)
 	   let sf, sk = List.fold_left2
 		(fun (f,k) z e ->
 			let ez, ef, ek = of_exp env e in
@@ -212,10 +215,21 @@ let of_instr (env :Env.t)
 			Unify.(z1 =~ ez);
 			Effects.(ef + f), K.(ek + k)
 		)
-		E.(just_var f + f0,k0) zs es in
+		E.(just_var f + f0,k0) zs es_args in
+	   (* extra arguments
+	    * hack: We assume that every extra argument is just "fully read",
+	    * which works well for bugs like http://vbdb.itu.dk/#bug/linux/1c17e4d.
+	    * This is unsound since we assume no other effects.
+	    *)
+	   let sf', sk' = es_varargs |> List.fold_left (fun (f,k) e ->
+			let ez, ef, ek = of_exp env e in
+			E.(fully_read ez + ef + f), K.(ek + k)
+	   ) (sf,sk)
+	   in
+	   (* assignment (optional) *)
 	   begin match lv_opt with
-	   | None    -> sf, sk
-	   | Some lv -> with_lval_set env z' sf sk lv
+	   | None    -> sf', sk'
+	   | Some lv -> with_lval_set env z' sf' sk' lv
 	   end
 	(* Oops, unsound :_( *)
 	| Cil.Asm _ ->
