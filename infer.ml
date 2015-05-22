@@ -59,6 +59,7 @@ let observe (env :Env.t) :E.t -> E.t =
     let is_observable = function
 		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
 		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
+		| E.Noret     -> true
 	in
 	E.of_enum % Enum.filter is_observable % E.enum_principal % E.zonk
 
@@ -359,7 +360,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 		then (Log.info "Skipping builtin function: %s\n" xn;
 			  env, k)
 		else
-			let env' = Env.fresh_if_absent x env in
+			let env' = Env.fresh_if_absent_ax x env in
 			FileAbs.add_var fileAbs x (Env.find x env') Effects.none;
 			env', k
 	| Cil.GVar (x,ii,_) ->

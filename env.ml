@@ -38,14 +38,30 @@ let (+::) : Cil.varinfo * shape scheme -> t -> t =
 let (+>) (env1 :t) (env2 :t) :t =
 	VarMap.fold VarMap.add env1 env2
 
-let fresh_if_absent (x :Cil.varinfo) (env :t) :t =
+let with_fresh x env :t =
+	let z = Shape.ref_of Cil.(x.vtype) in
+	let sch = { vars = Vars.none; body = z } in
+	(x,sch) +:: env
+
+let fresh_if_absent x env :t =
 	match find_opt x env with
 	| None ->
-		let z = Shape.ref_of Cil.(x.vtype) in
-		let sch = { vars = Vars.none; body = z } in
-		(x,sch) +:: env
+		with_fresh x env
 	| Some _ ->
 		env
+
+(* TODO: Should check that the axiom is compatible with the function's signature. *)
+let fresh_if_absent_ax (x :Cil.varinfo) (env :t) :t =
+	let is_extern = Cil.(x.vstorage = Extern) in
+	if is_extern
+	then
+		match Axioms.find Cil.(x.vname) with
+		| Some sch ->
+			(x,sch) +:: env
+		| None ->
+			fresh_if_absent x env
+	else
+		fresh_if_absent x env
 
 let of_bindings :(Cil.varinfo * shape scheme) list -> t =
 	VarMap.of_enum % List.enum

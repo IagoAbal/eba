@@ -3,6 +3,8 @@ open Batteries
 
 (* Shapes *)
 
+(* TODO: Smart constructors for shapes *)
+
 module rec Shape : sig
 
 	type t = Var of var
@@ -586,6 +588,7 @@ and Effects : sig
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
+		   | Noret
 
 	module EffectSet : Set.S with type elt := e
 
@@ -599,7 +602,11 @@ and Effects : sig
 
 	val writes : r:Region.t -> e
 
+	val noret : e
+
 	val just_var : EffectVar.t -> t
+
+	val just : e -> t
 
 	(** Read all memory regions of a given shape. *)
 	val fully_read : Shape.t -> t
@@ -641,6 +648,7 @@ and Effects : sig
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
+		   | Noret
 
 	let mk_var x =
 		Var x
@@ -656,8 +664,12 @@ and Effects : sig
 			if cmp_k = 0
 			then Region.compare r1 r2
 			else cmp_k
+		| (Noret,Noret) ->  0
 		| (Var _,Mem _) -> -1
-		| (Mem _,Var _) -> 1
+		| (Var _,Noret) -> -1
+		| (Mem _,Var _) ->  1
+		| (Mem _,Noret) -> -1
+		| (Noret,_____) ->  1
 
 	module EffectSet = Set.Make(
 		struct
@@ -677,6 +689,8 @@ and Effects : sig
 	let reads ~r = mk_mem Read r
 
 	let writes ~r = mk_mem Write r
+
+	let noret = Noret
 
 	let just_var x = just (mk_var x)
 
@@ -708,13 +722,15 @@ and Effects : sig
 
 	let fv_of xs = Vars.sum (List.map (function
 		| Var x    -> EffectVar.fv_of x
-		| Mem(_,r) -> Vars.singleton (Var.Region r))
+		| Mem(_,r) -> Vars.singleton (Var.Region r)
+		| Noret    -> Vars.none)
 		(EffectSet.to_list xs))
 
 	let vsubst_e (s :Var.t Subst.t) :e -> e
 		= function
 		| Var x     -> Var (EffectVar.vsubst s x)
 		| Mem (k,r) -> Mem (k,Region.vsubst s r)
+		| Noret     -> Noret
 
 	let vsubst (s :Var.t Subst.t) :t -> t =
 		EffectSet.map (vsubst_e s)
@@ -740,6 +756,7 @@ and Effects : sig
 		| Var f    -> Var (EffectVar.zonk f)
 		| Mem(k,r) -> let r' = Region.zonk r in
 					  Mem(k,r')
+		| Noret    -> Noret
 
 	let zonk = EffectSet.map zonk_e
 
@@ -752,6 +769,7 @@ and Effects : sig
 	let pp_e = function
 		| Var x    -> EffectVar.pp_lb x
 		| Mem(k,r) -> PP.(pp_kind k + brackets(Region.pp r))
+		| Noret    -> PP.(!^ "noret")
 
 	let pp fs =
 		PP.braces(PP.space_sep (List.map pp_e (EffectSet.to_list fs)))
