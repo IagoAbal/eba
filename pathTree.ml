@@ -75,6 +75,17 @@ let rec generate fnAbs visited st :t =
 		let {node; effects} = st in
 		let sk = Cil.(node.skind) in
 		match sk with
+		| Cil.Instr [] (* label: e.g. as a result of prepareCFG *)
+		| Cil.Goto _
+		| Cil.Break _
+		| Cil.Continue _
+		| Cil.Loop _
+		| Cil.Block _ ->
+			let succs = Cil.(st.node.succs) in
+			assert(not(List.is_empty succs));
+			let node' = List.hd succs in
+			let st' = { st with node = node' } in
+			generate fnAbs visited' st'
 		| Cil.Instr instrs ->
 			let succs = Cil.(node.succs) in
 			assert(not(List.is_empty succs));
@@ -90,14 +101,6 @@ let rec generate fnAbs visited st :t =
 			let ef = FunAbs.effect_of fnAbs loc in
 			let rexp = Rexp(e_opt,loc) in
 			Return(rexp,ef)
-		| Cil.Goto _
-		| Cil.Break _
-		| Cil.Continue _
-		| Cil.Loop _
-		| Cil.Block _ ->
-			let node' = List.hd Cil.(st.node.succs) in
-			let st' = { st with node = node' } in
-			generate fnAbs visited' st'
 		| Cil.If (e,_,_,loc) ->
 			let cond = Cond(e,loc) in
 			let ef = FunAbs.effect_of fnAbs loc in
