@@ -50,4 +50,4 @@ val reachable :
 	t Lazy.t ->
 	guard:st_pred ->
 	target:st_pred ->
-	(Cil.location * path) LazyList.t
+	(Cil.location * path * t Lazy.t) LazyList.t

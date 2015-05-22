@@ -27,6 +27,11 @@ let shape_of tbl x =
 	| Var(sch,_)
 	| Fun(sch,_) -> sch
 
+let effect_of tbl x =
+	match find tbl x with
+	| Var(_,ef) -> ef
+	| Fun(_,fnAbs) -> FunAbs.sum fnAbs
+
 let zonk_entry = function
 	| Var(sch,ef) ->
 		let sch' = Scheme.zonk sch in

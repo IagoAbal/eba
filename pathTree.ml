@@ -35,6 +35,11 @@ type cond = Cond of Cil.exp * Cil.location
 type t = Nil
        | Return of rexp * Effects.t
        | Seq of stmt * Effects.t * t Lazy.t
+	   (* TODO: We should split the If node into two, in case we want
+	    * to resume a reachability query from an `if' without examining
+	    * the condition again. Fortunately, expressions have limited
+	    * effects in CIL, mostly read-only.
+	    *)
        | If of cond * Effects.t * t Lazy.t * t Lazy.t
 
 let if_not_visited visited st f =
@@ -141,9 +146,9 @@ let pp_path = function
 	| [] -> PP.(!^ "trivial")
 	| p  -> PP.newline_sep (List.map pp_dec p)
 
-let push_dec x (l,xs) = (l,x::xs)
+let push_dec x (l,xs,t) = (l,x::xs,t)
 
-let at_loc l = L.cons (l,[]) L.nil
+let at_loc l t = L.cons (l,[],t) L.nil
 
 let backtrack = L.nil
 
@@ -151,20 +156,20 @@ type st_pred = Effects.t -> bool
 
 (* TODO: We should return the statement or expression together with the location *)
 
-let rec reachable t ~guard ~target :(Cil.location * path) L.t =
+let rec reachable t ~guard ~target :(Cil.location * path * t Lazy.t) L.t =
 	match Lazy.force t with
 	| Return(Rexp(_,loc),ef) when target ef ->
 		Log.info "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc
-	| Seq(Stmt(_,loc),ef,_) when target ef ->
+		at_loc loc (lazy Nil)
+	| Seq(Stmt(_,loc),ef,t') when target ef ->
 		Log.info "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc
+		at_loc loc t'
 	| Seq(Stmt(_,loc),ef,t') when guard ef ->
 		Log.info "reachable guard at %s" (Utils.Location.to_string loc);
 		reachable t' guard target
 	| If(Cond(_,loc),ef,_,_) when target ef ->
 		Log.info "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc
+		at_loc loc t
 	| If(c,ef,t1,t2) when guard ef ->
 		let dec1 = Dec(c,false) in
 		let dec2 = Dec(c,true) in

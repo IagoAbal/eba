@@ -15,6 +15,7 @@ FILES[] =
     infer
     pathTree
     checkLocalUninit
+    checkDoubleLock
 
 OCAMLPACKS[] += batteries cil smart_print cmdliner dolog
 OCAMLFLAGS += -thread

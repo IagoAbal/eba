@@ -584,7 +584,7 @@ end
 
 and Effects : sig
 
-	type mem_kind = Alloc | Free | Read | Write
+	type mem_kind = Alloc | Free | Read | Write | Lock | Unlock
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
@@ -602,7 +602,13 @@ and Effects : sig
 
 	val writes : r:Region.t -> e
 
+	val locks : r:Region.t -> e
+
+	val unlocks : r:Region.t -> e
+
 	val noret : e
+
+	val is_locks : e -> bool
 
 	val just_var : EffectVar.t -> t
 
@@ -625,6 +631,8 @@ and Effects : sig
 
 	val fv_of : t -> Vars.t
 
+	val regions : t -> Region.t Enum.t
+
 	val vsubst : Var.t Subst.t -> t -> t
 
 	val of_enum : e Enum.t -> t
@@ -644,7 +652,7 @@ and Effects : sig
 	end
 	= struct
 
-	type mem_kind = Alloc | Free | Read | Write
+	type mem_kind = Alloc | Free | Read | Write | Lock | Unlock
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
@@ -690,7 +698,17 @@ and Effects : sig
 
 	let writes ~r = mk_mem Write r
 
+	let locks ~r = mk_mem Lock r
+
+	let unlocks ~r = mk_mem Unlock r
+
 	let noret = Noret
+
+	let is_mem k = function
+		| Mem(k1,_) -> k = k1
+		| __other__ -> false
+
+	let is_locks = is_mem Lock
 
 	let just_var x = just (mk_var x)
 
@@ -725,6 +743,14 @@ and Effects : sig
 		| Mem(_,r) -> Vars.singleton (Var.Region r)
 		| Noret    -> Vars.none)
 		(EffectSet.to_list xs))
+
+	(* TODO: Use lazy lists *)
+	let regions ef =
+		let get_region = function
+			| Mem(_,r) -> Some r
+			| ________ -> None
+		in
+		ef |> EffectSet.enum |> Enum.filter_map get_region
 
 	let vsubst_e (s :Var.t Subst.t) :e -> e
 		= function
@@ -765,6 +791,8 @@ and Effects : sig
 		| Write -> PP.(!^ "write")
 		| Alloc -> PP.(!^ "alloc")
 		| Free  -> PP.(!^ "free")
+		| Lock  -> PP.(!^ "lock")
+		| Unlock -> PP.(!^ "unlock")
 
 	let pp_e = function
 		| Var x    -> EffectVar.pp_lb x

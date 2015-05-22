@@ -16,6 +16,8 @@ val find : t -> Cil.varinfo -> entry
 
 val shape_of : t -> Cil.varinfo -> shape scheme
 
+val effect_of : t -> Cil.varinfo -> Effects.t
+
 val zonk : t -> unit
 
 val pp : t -> PP.doc

@@ -26,6 +26,8 @@ val shape_of : t -> Cil.varinfo -> shape scheme
 
 val effect_of : t -> Cil.location -> Effects.t
 
+val sum : t -> Effects.t
+
 val pp : t -> PP.doc
 
 val to_string : t -> string

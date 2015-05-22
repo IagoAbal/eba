@@ -50,6 +50,9 @@ let shape_of tbl =
 let effect_of tbl =
 	LocMap.find tbl.locs
 
+let sum tbl =
+	LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.locs E.none
+
 let aliased _ _ = Error.not_implemented()
 
 let points_to _ _ = Error.not_implemented()

@@ -56,7 +56,7 @@ let in_fundec fd fnAbs :report L.t =
 				~guard:(not_writes r)
 				~target:(reads_and_not_writes r)
 			in
-			let mk_report (l,p) = {
+			let mk_report (l,p,_) = {
 				fn = Cil.(fd.svar);
 				x;
 				region = r;

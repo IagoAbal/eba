@@ -44,11 +44,59 @@ let assert_fail :axiom =
 	in
 	Axiom("__assert_fail", {vars; body})
 
+let spin_lock :axiom =
+	let r0 = Region.meta() in
+	let r1 = Region.bound() in
+	let r2 = Region.bound() in
+	let f1 = EffectVar.bound_with
+		E.(just (locks r2) +. reads r1 +. reads r2 +. writes r2)
+	in
+	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
+	let vars =
+		let open Var in
+		let regions = List.map (fun r -> Region r) in
+		Vars.of_list ([Effect f1] @ regions [r1;r2])
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = [arg1]
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("spin_lock", {vars; body})
+
+let spin_unlock :axiom =
+	let r0 = Region.meta() in
+	let r1 = Region.bound() in
+	let r2 = Region.bound() in
+	let f1 = EffectVar.bound_with
+		E.(just (unlocks r2) +. reads r1 +. reads r2 +. writes r2)
+	in
+	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
+	let vars =
+		let open Var in
+		let regions = List.map (fun r -> Region r) in
+		Vars.of_list ([Effect f1] @ regions [r1;r2])
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = [arg1]
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("spin_unlock", {vars; body})
+
+(* Axiom table *)
+
 let add_axiom tbl (Axiom(fn,sch)) = Hashtbl.add tbl fn sch
 
 let axiom_map : (name,shape scheme) Hashtbl.t  =
 	let tbl = Hashtbl.create 5 in
 	add_axiom tbl assert_fail;
+	add_axiom tbl spin_lock;
+	add_axiom tbl spin_unlock;
 	tbl
 
 let find fn = Hashtbl.Exceptionless.find axiom_map fn
