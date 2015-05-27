@@ -49,7 +49,7 @@ let in_fundec fd fnAbs :report L.t =
 		let sch = FunAbs.shape_of fnAbs x in
 		match sch.body with
 		| Shape.Ref(r,_) ->
-			Log.info  "Analyzing variable %s (region %s)\n"
+			Log.debug  "Analyzing variable %s (region %s)\n"
 				Cil.(x.vname)
 				(Region.to_string r);
 			let lps = reachable pt
@@ -81,7 +81,7 @@ let in_file file fileAbs :report L.t =
 		| FileAbs.Var _ ->
 			Error.panic()
 		| FileAbs.Fun(_,fnAbs) ->
-			Log.info "Analyzing function %s\n" Cil.(fd.svar.vname);
+			Log.debug "Analyzing function %s\n" Cil.(fd.svar.vname);
 			in_fundec fd fnAbs
 	)
 	in

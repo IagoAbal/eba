@@ -27,7 +27,7 @@ let add_vars tbl =
 	List.iter (fun (x,sch) -> add_var tbl x sch)
 
 let add_loc tbl loc eff =
-	   Log.info "Loc -> effects:\n %s -> %s\n"
+	Log.debug "Loc -> effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)
 		   (Effects.to_string eff);
 	LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.locs

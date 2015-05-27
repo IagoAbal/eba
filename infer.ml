@@ -248,7 +248,7 @@ let of_instr (env :Env.t)
 let of_instr_log fnAbs env instr =
 	let loc = Cil.get_instrLoc instr in
 	let f, k = of_instr env instr in
-	 Log.info "Instr effects:\n %s -> %s\n"
+	 Log.debug "Instr effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)
 		   (Effects.to_string f);
 	FunAbs.add_loc fnAbs loc f;
@@ -430,7 +430,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GEnumTagDecl _ -> Error.not_implemented()
 	| Cil.GVarDecl (x,_) ->
 		let xn = Cil.(x.vname) in
-		Log.info "Variable declaration: %s\n" xn;
+		Log.debug "Variable declaration: %s\n" xn;
 		if Hashtbl.mem Cil.builtinFunctions xn
 		then (Log.info "Skipping builtin function: %s\n" xn;
 			  env, k)
@@ -441,7 +441,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GVar (x,ii,_) ->
 		let xn = Cil.(x.vname) in
 		let env' = Env.fresh_if_absent x env in
-		Log.info "Global variable %s : %s\n" xn (Shape.to_string (Env.find x env').body);
+		Log.debug "Global variable %s : %s\n" xn (Shape.to_string (Env.find x env').body);
 		(* THINK: move to of_init *)
 		let sch_x = Env.find x env' in
 		let ef, ki = of_gvar env' x sch_x.body Cil.(ii.init) in
@@ -479,7 +479,7 @@ let of_file (file : Cil.file) :FileAbs.t =
 		(env0,k0)
 		Cil.(file.globals)
 	in
-	Log.info "Env:\n %s\n" (Env.to_string (Env.zonk env1));
+	Log.debug "Env:\n %s\n" (Env.to_string (Env.zonk env1));
 	FileAbs.zonk fileAbs;
 	Log.info "FileAbs:\n%s\n" (FileAbs.to_string fileAbs);
 	fileAbs

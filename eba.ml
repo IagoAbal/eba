@@ -10,7 +10,7 @@ module CDL = CheckDoubleLock
 let run_checks file fileAbs :unit =
 	let run_check fd in_func =
 		 in_func fileAbs fd |> L.iter (function errmsg ->
-			Log.info "\nPotential bug found:\n%s\n" errmsg
+			Printf.printf "Potential BUG found:\n%s\n\n" errmsg
 		 )
 	in
 	let fds = Cil.(file.globals) |> List.filter_map (function
@@ -31,13 +31,13 @@ let infer_file fn =
 	let rs = CLU.in_file file fileAbs in
 	(match L.get rs with
 	| Some (r,_) ->
-		Log.info "Potential bug found:\n%s\n"
+		Printf.printf "Potential BUG found:\n%s\n\n"
 			(PP.to_string (CLU.pp_report r))
 	| None   -> ());
 	let rs = CDL.in_file file fileAbs in
 	match L.get rs with
 	| Some (r,_) ->
-		Log.info "Potential bug found:\n%s\n"
+		Printf.printf "Potential BUG found:\n%s\n\n"
 			(PP.to_string (CDL.pp_report r))
 	| None   -> ()
 

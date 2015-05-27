@@ -172,16 +172,16 @@ type st_pred = Effects.t -> bool
 let rec reachable t ~guard ~target :(Cil.location * path * t Lazy.t) L.t =
 	match Lazy.force t with
 	| Return(Rexp(_,loc),ef) when target ef ->
-		Log.info "reachable target at %s" (Utils.Location.to_string loc);
+		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
 		at_loc loc (lazy Nil)
 	| Seq(Stmt(_,loc),ef,t') when target ef ->
-		Log.info "reachable target at %s" (Utils.Location.to_string loc);
+		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
 		at_loc loc t'
 	| Seq(Stmt(_,loc),ef,t') when guard ef ->
-		Log.info "reachable guard at %s" (Utils.Location.to_string loc);
+		Log.debug "reachable guard at %s" (Utils.Location.to_string loc);
 		reachable t' guard target
 	| If(Cond(_,loc),ef,_,_) when target ef ->
-		Log.info "reachable target at %s" (Utils.Location.to_string loc);
+		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
 		at_loc loc t
 	| If(c,ef,t1,t2) when guard ef ->
 		let dec1 = Dec(c,false) in

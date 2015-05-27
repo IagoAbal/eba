@@ -68,7 +68,7 @@ let in_fundec fd fnAbs :report L.t =
 	in
 	(* TODO: find from which variables we can access those regions *)
 	let pss = locks |> List.of_enum |> List.map (fun r ->
-		Log.info  "Analyzing variable region %s\n"
+		Log.debug  "Analyzing variable region %s\n"
 			(Region.to_string r);
 		let llps = find_double_lock pt r in
 		let mk_report (l1,l2,p) = {
@@ -94,7 +94,7 @@ let in_file file fileAbs :report L.t =
 		| FileAbs.Var _ ->
 			Error.panic()
 		| FileAbs.Fun(_,fnAbs) ->
-			Log.info "Analyzing function %s\n" Cil.(fd.svar.vname);
+			Log.debug "Analyzing function %s\n" Cil.(fd.svar.vname);
 			in_fundec fd fnAbs
 	)
 	in
