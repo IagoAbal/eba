@@ -590,11 +590,31 @@ and Effects : sig
 		   | Mem of mem_kind * Region.t
 		   | Noret
 
+	type 'a certainty = private Must of 'a | May of 'a
+
+	val may : 'a -> 'a certainty
+
+	val must : 'a -> 'a certainty
+
+	val is_may : 'a certainty -> 'a option
+
+	val is_must : 'a certainty -> 'a option
+
+	(** Weaken the certainty or, in other words, sets it to [may]. *)
+	val weak : 'a certainty -> 'a certainty
+
+	val uncertain : 'a certainty -> 'a
+
 	module EffectSet : Set.S with type elt := e
 
-	type t = EffectSet.t
+	type t = {
+		  must : EffectSet.t
+		; may  : EffectSet.t
+	}
 
 	val (=.) : e -> e -> bool
+
+	val (=~) : e certainty -> e certainty -> bool
 
 	val none : t
 
@@ -617,7 +637,12 @@ and Effects : sig
 	(** Read all memory regions of a given shape. *)
 	val fully_read : Shape.t -> t
 
+	(** Weaken the certaint of the effects. *)
+	val weaken : t -> t
+
 	val mem : e -> t -> bool
+
+	val mem_must : e -> t -> bool
 
 	val (+.) : t -> e -> t
 
@@ -635,11 +660,13 @@ and Effects : sig
 
 	val vsubst : Var.t Subst.t -> t -> t
 
-	val of_enum : e Enum.t -> t
+	val of_enum : e certainty Enum.t -> t
 
-	val enum : t -> e Enum.t
+	val enum : t -> e certainty Enum.t
 
-	val enum_principal : t -> e Enum.t
+	val enum_may : t -> e Enum.t
+
+	val enum_principal : t -> e certainty Enum.t
 
 	val principal : t -> t
 
@@ -657,6 +684,28 @@ and Effects : sig
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
 		   | Noret
+
+	type 'a certainty = Must of 'a | May of 'a
+
+	let may x = May x
+
+	let must x = Must x
+
+	let is_may = function
+		| May x  -> Some x
+		| Must _ -> None
+
+	let is_must = function
+		| Must x -> Some x
+		| May _  -> None
+
+	let weak = function
+		| Must f -> May f
+		| x      -> x
+
+	let uncertain = function
+		| Must f -> f
+		| May  f -> f
 
 	let mk_var x =
 		Var x
@@ -679,6 +728,13 @@ and Effects : sig
 		| (Mem _,Noret) -> -1
 		| (Noret,_____) ->  1
 
+	let (=.) e1 e2 = compare_e e1 e2 = 0
+
+	let (=~) f1 f2 = match (f1,f2) with
+		| (Must x,Must y) -> x =. y
+		| (May x,May y)   -> x =. y
+		| __otherwise__   -> false
+
 	module EffectSet = Set.Make(
 		struct
 			type t = e
@@ -686,13 +742,21 @@ and Effects : sig
 		end
 		)
 
-	type t = EffectSet.t
+	(* THINK: possible optimization is to assume must implicitly contained in may, to keep may smaller *)
+	type t = {
+		  must : EffectSet.t
+		; may  : EffectSet.t (* must is a subset of may *)
+	}
 
-	let (=.) e1 e2 = compare_e e1 e2 = 0
+	let none = {
+		  may  = EffectSet.empty
+		; must = EffectSet.empty
+	}
 
-	let none = EffectSet.empty
-
-	let just = EffectSet.singleton
+	let just e = {
+		  may  = EffectSet.singleton e
+		; must = EffectSet.singleton e
+	}
 
 	let reads ~r = mk_mem Read r
 
@@ -712,13 +776,25 @@ and Effects : sig
 
 	let just_var x = just (mk_var x)
 
-	let add = EffectSet.add
+	let weaken fs = { fs with must = EffectSet.empty }
 
-	let mem = EffectSet.mem
+	let add f fs = {
+		  may  = EffectSet.add f fs.may
+		; must = EffectSet.add f fs.must
+		}
 
-	let (+.) es e = add e es
+	let mem f fs =
+		EffectSet.mem f fs.may
 
-	let (+) = EffectSet.union
+	let mem_must f fs =
+		EffectSet.mem f fs.must
+
+	let (+.) fs f = add f fs
+
+	let (+) fs1 fs2 =
+		{ may  = EffectSet.union fs1.may fs2.may
+		; must = EffectSet.union fs1.must fs2.must
+		}
 
 	let fully_read z =
 		let open Shape in
@@ -732,17 +808,47 @@ and Effects : sig
 		in
 		fold f z
 
-	let filter = EffectSet.filter
+	let filter pred fs = {
+		  may  = EffectSet.filter pred fs.may
+		; must = EffectSet.filter pred fs.must
+	}
 
-	let remove = EffectSet.remove
+	let remove f fs = {
+		  may  = EffectSet.remove f fs.may
+		; must = EffectSet.remove f fs.must
+	}
 
-	let compare = EffectSet.compare
+	let compare fs1 fs2 =
+		(* better to compare the smaller set first *)
+		let cmp_must = EffectSet.compare fs1.must fs2.must in
+		if cmp_must = 0
+		then EffectSet.compare fs1.may fs2.may
+		else cmp_must
 
-	let fv_of xs = Vars.sum (List.map (function
-		| Var x    -> EffectVar.fv_of x
-		| Mem(_,r) -> Vars.singleton (Var.Region r)
-		| Noret    -> Vars.none)
-		(EffectSet.to_list xs))
+	let of_enum fe =
+		let (mayE,mustE) = Enum.span (Option.is_some % is_may) fe in
+		let mays = mayE |> Enum.map uncertain |> EffectSet.of_enum in
+		let musts = mustE |> Enum.map uncertain |> EffectSet.of_enum in
+		assert(EffectSet.subset musts mays);
+		{ may  = mays
+		; must = musts
+		}
+
+	let enum fs =
+		let mays  = fs.may  |> EffectSet.enum |> Enum.map may  in
+		let musts = fs.must |> EffectSet.enum |> Enum.map must in
+		Enum.append mays musts
+
+	let enum_may fs = EffectSet.enum fs.may
+
+	let fv_of fs =
+		let ff = fs |> enum_may |> List.of_enum in
+		let xss = ff |> List.map (function
+			| Var x    -> EffectVar.fv_of x
+			| Mem(_,r) -> Vars.singleton (Var.Region r)
+			| Noret    -> Vars.none
+		) in
+		Vars.sum xss
 
 	(* TODO: Use lazy lists *)
 	let regions ef =
@@ -750,7 +856,7 @@ and Effects : sig
 			| Mem(_,r) -> Some r
 			| ________ -> None
 		in
-		ef |> EffectSet.enum |> Enum.filter_map get_region
+		ef |> enum_may |> Enum.filter_map get_region
 
 	let vsubst_e (s :Var.t Subst.t) :e -> e
 		= function
@@ -758,19 +864,22 @@ and Effects : sig
 		| Mem (k,r) -> Mem (k,Region.vsubst s r)
 		| Noret     -> Noret
 
-	let vsubst (s :Var.t Subst.t) :t -> t =
-		EffectSet.map (vsubst_e s)
-
-	let of_enum = EffectSet.of_enum
-
-	let enum = EffectSet.enum
+	let vsubst (s :Var.t Subst.t) fs :t = {
+		  may  = EffectSet.map (vsubst_e s) fs.may
+		; must = EffectSet.map (vsubst_e s) fs.must
+	}
 
 	let rec enum_principal f =
 		Enum.concat (Enum.map principal_of_e (enum f))
 
-	and principal_of_e (f :e) :e Enum.t =
+	and principal_of_e (f :e certainty) :e certainty Enum.t =
 		match f with
-		| Var x ->
+		| May(Var x) ->
+			let en = enum_principal (EffectVar.lb_of x) in
+			let en' = Enum.map weak en in
+			Enum.push en' f;
+			en'
+		| Must(Var x) ->
 			let en = enum_principal (EffectVar.lb_of x) in
 			Enum.push en f;
 			en
@@ -784,7 +893,10 @@ and Effects : sig
 					  Mem(k,r')
 		| Noret    -> Noret
 
-	let zonk = EffectSet.map zonk_e
+	let zonk fs = {
+		  may  = EffectSet.map zonk_e fs.may
+		; must = EffectSet.map zonk_e fs.must
+	}
 
 	let pp_kind = function
 		| Read  -> PP.(!^ "read")
@@ -800,9 +912,12 @@ and Effects : sig
 		| Noret    -> PP.(!^ "noret")
 
 	let pp fs =
-		PP.braces(PP.space_sep (List.map pp_e (EffectSet.to_list fs)))
+		let strictly_may = EffectSet.diff fs.may fs.must in
+		let pp_mays = List.map pp_e (EffectSet.to_list strictly_may) in
+		let pp_must = List.map (fun x -> PP.(!^ "!" + pp_e x)) (EffectSet.to_list fs.must) in
+		PP.braces(PP.space_sep (pp_mays @ pp_must))
 
-	let to_string = PP.to_string % pp
+	let to_string :t -> string = PP.to_string % pp
 
 	end
 

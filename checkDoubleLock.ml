@@ -32,12 +32,12 @@ let pp_report {fn; region; loc1; loc2; trace} =
 (* Predicates *)
 
 let unlocks r ef :bool =
-	Enum.exists (E.(=.)(E.unlocks r)) (E.enum_principal ef)
+	Enum.exists (E.(=~)(E.may(E.unlocks r))) (E.enum_principal ef)
 
 let not_unlocks r ef :bool = not (unlocks r ef)
 
 let locks r ef :bool =
-	Enum.exists (E.(=.)(E.locks r)) (E.enum_principal ef)
+	Enum.exists (E.(=~)(E.must(E.locks r))) (E.enum_principal ef)
 
 let locks_and_not_unlocks r ef =
 	locks r ef && not_unlocks r ef

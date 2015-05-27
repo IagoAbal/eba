@@ -54,14 +54,16 @@ let generalize_fun env k r z fnAbs
 	FunAbs.zonk fnAbs;
 	sch, k1
 
-let observe (env :Env.t) :E.t -> E.t =
+let observe (env :Env.t) ef :E.t =
 	let env_fv = Env.fv_of (Env.zonk env) in
     let is_observable = function
 		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
 		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
 		| E.Noret     -> true
 	in
-	E.of_enum % Enum.filter is_observable % E.enum_principal % E.zonk
+	let open Effects in
+	let filter_observable = Enum.filter (is_observable % uncertain) in
+	ef |> zonk |> enum_principal |> filter_observable |> of_enum
 
 (* TODO: We should keep "precision" info associated with
    region variables. E.g. to know if something is the result
@@ -250,6 +252,35 @@ let sum_f_k : (Effects.t * K.t) list -> Effects.t * K.t
 		(fun (f, k) (f1, k1) -> Effects.(f1 + f), K.(k1 + k))
 		(Effects.none, K.none)
 
+let sum_f_k_weak = Tuple2.map1 E.weaken % sum_f_k
+
+(** Obtain a prefix of statements with strictly sequential control flow,
+  * for which we can infer must effects.
+  *)
+let split_stmts (stmts :Cil.stmt list) :Cil.stmt list * Cil.stmt list =
+	let is_instr s =
+		let open Cil in
+		match s.skind with
+		| Instr _ -> true
+		| _else__ -> false
+	in
+	let is_return s =
+		let open Cil in
+		match s.skind with
+		| Return _ -> true
+		| _else___ -> false
+	in
+	match stmts with
+	| s::[] when is_return s ->
+		stmts, []
+	| _else ->
+		let prefix, rest = List.span is_instr stmts in
+		match rest with
+		| ret::[] when is_return ret ->
+			prefix@[ret], []
+		| _else ->
+			prefix, rest
+
 (* TODO: CIL Cfg builds a control-flow graph on the AST structure,
    each stmt receives an id, that we can use to map stmt to
    [Effects.t list]. Note that an statement may be a sequence of
@@ -305,8 +336,14 @@ and of_stmt (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (s :Cil.stmt)
 		: E.t * K.t =
 	of_stmtkind fnAbs env rz Cil.(s.skind)
 
+and of_block_must fnAbs env rz b : E.t * K.t =
+	let head,tail = split_stmts Cil.(b.bstmts) in
+	let f1,k1 = sum_f_k (List.map (of_stmt fnAbs env rz) head) in
+	let f2,k2 = sum_f_k_weak (List.map (of_stmt fnAbs env rz) tail) in
+	E.(f1 + f2), K.(k1 + k2)
+
 and of_block (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
-	 sum_f_k (List.map (of_stmt fnAbs env rz) Cil.(b.bstmts))
+	 sum_f_k_weak (List.map (of_stmt fnAbs env rz) Cil.(b.bstmts))
 
 (** Inference rule for function definitions
   *
@@ -331,7 +368,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	let body = Cil.(fd.sbody) in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
-	let bf, k1 = of_block fnAbs env'' z_res body in
+	let bf, k1 = of_block_must fnAbs env'' z_res body in
 	let bf' = observe env' bf in (* FIXME in the paper: not env but env'! *)
 	(* f >= bf' may introduce a recursive subeffecting constraint
 	   if the function is recursive.

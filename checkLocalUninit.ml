@@ -30,12 +30,12 @@ let pp_report {fn; x; region; loc; trace} = PP.(
 (* Predicates *)
 
 let writes r ef :bool =
-	Enum.exists (E.(=.)(E.writes r)) (E.enum_principal ef)
+	Enum.exists (E.(=~)(E.may(E.writes r))) (E.enum_principal ef)
 
 let not_writes r ef :bool = not (writes r ef)
 
 let reads r ef :bool =
-	Enum.exists (E.(=.)(E.reads r)) (E.enum_principal ef)
+	Enum.exists (E.(=~)(E.must(E.reads r))) (E.enum_principal ef)
 
 let reads_and_not_writes r ef =
 	reads r ef && not_writes r ef
