@@ -109,11 +109,13 @@ let rec of_exp (env :Env.t)
 	= function
 	| Cil.Const c
 	-> of_const c, Effects.none, K.none
+	(* Since we flatten array shapes, [StartOf] can be handled the same way as [Lval]. *)
 	| Cil.Lval lv
-	-> let z, f, k = of_lval env lv in
-	   let r, z0 = Unify.match_ref_shape z in
-	   let f' = E.(f +. reads r) in
-	   z0, f', k
+	| Cil.StartOf lv ->
+		let z, f, k = of_lval env lv in
+		let r, z0 = Unify.match_ref_shape z in
+		let f' = E.(f +. reads r) in
+		z0, f', k
 	(* Even though effectively [unsigned int] or the like,
 	 * it seems a terrible idea to cast [size_t] to a
 	 * pointer type, so we give it shape _|_.
@@ -150,12 +152,6 @@ let rec of_exp (env :Env.t)
 	   Ptr z, f, k
 	(* TODO: This is a GCC extension, I hope not a popular one :-) *)
 	| Cil.AddrOfLabel _  -> Error.not_implemented()
-	(* startof is a CIL operator to represent the implicit cast
-	   between an array variable to a pointer to the first element,
-	   effectively [id] for us.
-	 *)
-	| Cil.StartOf lv
-	-> of_lval env lv
 
 and of_lval (env :Env.t)
 	: Cil.lval -> shape * Effects.t * K.t
