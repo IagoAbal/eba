@@ -1134,7 +1134,8 @@ module Unify =
 		| Var b when a = b ->
 			ok
 		| z when Shape.free_in (Var.Shape a) z ->
-			raise(Occurs_check(a,z))
+			Log.warn "Cyclic shape: %s ~ %s" Shape.(to_string (Var a)) (Shape.to_string z);
+			ok (* BUT UNSOUND: raise(Occurs_check(a,z)) *)
 		| z ->
 			Shape.write_var a z
 
