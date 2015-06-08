@@ -74,6 +74,24 @@ module rec Shape : sig
 
 	val vsubst : Var.t Subst.t -> t -> t
 
+	(** Fold over shapes
+	 *
+	 * Cons:
+	 * - Performance penalty (may improve with the compiler).
+	 * Pros:
+	 * - Reduce boilerplate.
+	 * - Less dependent on shapes representation.
+	 *)
+	type 'a fold = {
+		var : var -> 'a ;
+		bot : 'a ;
+		ptr : 'a -> 'a ;
+		fn  : 'a * 'a list * EffectVar.t -> 'a ;
+		rf  : Region.t -> 'a -> 'a
+	}
+
+	val fold : 'a fold -> t -> 'a
+
 	val pp_var : var -> PP.doc
 
 	val pp : t -> PP.doc
@@ -243,6 +261,26 @@ module rec Shape : sig
     	let f' = EffectVar.vsubst s effects in
     	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r' }
+
+	type 'a fold = {
+		var : var -> 'a ;
+		bot : 'a ;
+		ptr : 'a -> 'a ;
+		fn  : 'a * 'a list * EffectVar.t -> 'a ;
+		rf  : Region.t -> 'a -> 'a
+	}
+
+	let rec fold f = function
+    	| Var a    -> f.var a
+    	| Bot      -> f.bot
+    	| Ptr z    -> f.ptr (fold f z)
+    	| Fun fz   -> f.fn (fold_fun f fz)
+    	| Ref(r,z) -> f.rf r (fold f z)
+	and fold_fun f { domain; effects; range } =
+		let v_range = fold f range in
+		let v_domain = fold_args f domain in
+		v_range, v_domain, effects
+	and fold_args f args = args |> List.map (fold f)
 
 	let rec pp = function
 		| Var x    -> pp_var x
