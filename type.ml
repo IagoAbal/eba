@@ -70,6 +70,8 @@ module rec Shape : sig
 	(** Shape from [varinfo]'s type. *)
 	val of_varinfo : Cil.varinfo -> t
 
+	val is_fun : t -> bool
+
     (* THINK: Should it be Unify.match_fun ? *)
 	val get_fun : t -> args * EffectVar.t * result
 
@@ -239,6 +241,10 @@ module rec Shape : sig
     	new_ref_to z
 
 	let of_varinfo x = ref_of Cil.(x.vtype)
+
+	let is_fun = function
+		| Fun _ -> true
+		| _else -> false
 
     let get_fun : t -> args * EffectVar.t * t = function
     	| Fun {domain; effects; range} ->
@@ -584,7 +590,7 @@ end
 
 and Effects : sig
 
-	type mem_kind = Alloc | Free | Read | Write | Lock | Unlock
+	type mem_kind = Alloc | Free | Read | Write | Call | Lock | Unlock
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
@@ -621,6 +627,8 @@ and Effects : sig
 	val reads : r:Region.t -> e
 
 	val writes : r:Region.t -> e
+
+	val calls : r:Region.t -> e
 
 	val locks : r:Region.t -> e
 
@@ -679,7 +687,7 @@ and Effects : sig
 	end
 	= struct
 
-	type mem_kind = Alloc | Free | Read | Write | Lock | Unlock
+	type mem_kind = Alloc | Free | Read | Write | Call | Lock | Unlock
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
@@ -761,6 +769,8 @@ and Effects : sig
 	let reads ~r = mk_mem Read r
 
 	let writes ~r = mk_mem Write r
+
+	let calls ~r = mk_mem Call r
 
 	let locks ~r = mk_mem Lock r
 
@@ -901,6 +911,7 @@ and Effects : sig
 	let pp_kind = function
 		| Read  -> PP.(!^ "read")
 		| Write -> PP.(!^ "write")
+		| Call  -> PP.(!^ "call")
 		| Alloc -> PP.(!^ "alloc")
 		| Free  -> PP.(!^ "free")
 		| Lock  -> PP.(!^ "lock")

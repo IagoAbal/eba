@@ -112,12 +112,19 @@ let rec of_exp (env :Env.t)
 	= function
 	| Cil.Const c
 	-> of_const c, Effects.none, K.none
-	(* Since we flatten array shapes, [StartOf] can be handled the same way as [Lval]. *)
+	(* Since we flatten array shapes, [StartOf] can be handled
+	 * the same way as [Lval]. *)
 	| Cil.Lval lv
 	| Cil.StartOf lv ->
 		let z, f, k = of_lval env lv in
 		let r, z0 = Unify.match_ref_shape z in
-		let f' = E.(f +. reads r) in
+		let f' =
+			(* If `lv' is a function, it's going to be called.
+			 * Otherwise CIL would have inserted an `&'. *)
+			if Shape.is_fun z0
+			then E.(f +. calls r)
+			else E.(f +. reads r)
+		in
 		z0, f', k
 	(* Even though effectively [unsigned int] or the like,
 	 * it seems a terrible idea to cast [size_t] to a
