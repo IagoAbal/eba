@@ -24,8 +24,13 @@ val zonk : t -> unit
 
 val shape_of : t -> Cil.varinfo -> shape scheme
 
+val regions_of : t -> Cil.varinfo -> Regions.t
+
+val regions_of_list : t -> Cil.varinfo list -> Regions.t
+
 val effect_of : t -> Cil.location -> Effects.t
 
+(* TODO: This should be precomputed for an immutable FunAbs.t *)
 val sum : t -> Effects.t
 
 val pp : t -> PP.doc

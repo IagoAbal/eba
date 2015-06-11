@@ -7,9 +7,27 @@ module L = LazyList
 module CLU = CheckLocalUninit
 module CDL = CheckDoubleLock
 
+let run_checks file fileAbs :unit =
+	let run_check fd in_func =
+		 in_func fileAbs fd |> L.iter (function errmsg ->
+			Log.info "\nPotential bug found:\n%s\n" errmsg
+		 )
+	in
+	let fds = Cil.(file.globals) |> List.filter_map (function
+		| Cil.GFun(fd,_) -> Some fd
+		| ______________ -> None
+	)
+	in
+	fds |> List.iter (fun fd ->
+		Log.debug "Analyzing function %s\n" Cil.(fd.svar.vname);
+		run_check fd CheckFiNoret.in_func;
+		run_check fd CheckFiUninit.in_func
+	)
+
 let infer_file fn =
 	let file = Frontc.parse fn () in
 	let fileAbs = Infer.of_file file in
+	run_checks file fileAbs;
 	let rs = CLU.in_file file fileAbs in
 	(match L.get rs with
 	| Some (r,_) ->

@@ -22,15 +22,30 @@ let add_fun tbl x sch fnAbs =
 
 let find = VarMap.find
 
+let find_fun tbl fn =
+	match find tbl fn with
+	| Var _         ->
+		Error.panic_with("FileAbs.find_fun: not a function: " ^ Cil.(fn.vname))
+	| Fun (sch,abs) -> sch, abs
+
 let shape_of tbl x =
 	match find tbl x with
 	| Var(sch,_)
 	| Fun(sch,_) -> sch
 
+let effects_of_entry = function
+	| Var(_,ef)      -> ef
+	| Fun(sch,fnAbs) -> E.of_enum (Scheme.effects_of_fun sch)
+
 let effect_of tbl x =
-	match find tbl x with
-	| Var(_,ef) -> ef
-	| Fun(_,fnAbs) -> FunAbs.sum fnAbs
+	effects_of_entry(find tbl x)
+
+(* TODO: This should be precomputed *)
+let sum tbl =
+	VarMap.fold (fun _ entry acc ->
+		let ef = effects_of_entry entry in
+		E.(ef + acc)
+	) tbl E.none
 
 let zonk_entry = function
 	| Var(sch,ef) ->

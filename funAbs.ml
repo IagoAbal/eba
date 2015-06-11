@@ -6,6 +6,7 @@ open Type
 module VarMap = Hashtbl.Make(Utils.Varinfo)
 module LocMap = Hashtbl.Make(Utils.Location)
 
+(* THINK: Local variables have monomorphic shape schemes... so we could simplify this as vars : shape VarMap.t *)
 type t = {
 	vars : shape scheme VarMap.t;
 	locs : E.t LocMap.t
@@ -46,6 +47,10 @@ let zonk tbl =
 
 let shape_of tbl =
 	VarMap.find tbl.vars
+
+let regions_of tbl = Scheme.regions_in % shape_of tbl
+
+let regions_of_list tbl = Regions.sum % List.map (regions_of tbl)
 
 let effect_of tbl =
 	LocMap.find tbl.locs

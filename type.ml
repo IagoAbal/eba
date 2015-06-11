@@ -74,6 +74,7 @@ module rec Shape : sig
 
     (* THINK: Should it be Unify.match_fun ? *)
 	val get_fun : t -> args * EffectVar.t * result
+	val get_ref_fun : t -> args * EffectVar.t * result
 
 	val vsubst_var : Var.t Subst.t -> var -> var
 
@@ -96,6 +97,8 @@ module rec Shape : sig
 	}
 
 	val fold : 'a fold -> t -> 'a
+
+	val regions_in : t -> Regions.t
 
 	val pp_var : var -> PP.doc
 
@@ -250,6 +253,13 @@ module rec Shape : sig
     	| Fun {domain; effects; range} ->
 			domain, effects, range
     	| __other__ ->
+			Log.error "%s is not a function shape\n" (Shape.to_string __other__);
+			Error.panic()
+
+	let get_ref_fun = function
+		| Ref(_,z)  -> get_fun z
+		| __other__ ->
+			Log.error "%s is not a ref-to-function shape\n" (Shape.to_string __other__);
 			Error.panic()
 
     (** Substitute variables with variables.
@@ -292,6 +302,15 @@ module rec Shape : sig
 		let v_domain = fold_args f domain in
 		v_range, v_domain, varargs, effects
 	and fold_args f args = args |> List.map (fold f)
+
+	let regions_in =
+		let f = {
+			  var = const Regions.none
+			; bot = Regions.none
+			; ptr = identity
+			; fn  = (fun (rs,rss,_,_) -> Regions.sum (rs::rss))
+			; rf  = fun r rs -> Regions.add r rs
+		} in fold f
 
 	let rec pp = function
 		| Var x    -> pp_var x
@@ -420,6 +439,23 @@ end = struct
 	let to_string = PP.to_string % pp
 
 end
+
+and Regions : sig
+	include Set.S with type elt := Region.t
+	val none : t
+	val (+) : t -> t -> t
+	val sum : t list -> t
+	val pp : t -> PP.doc
+	val to_string : t -> string
+	end
+	= struct
+		include Set.Make(Region)
+		let none = empty
+		let (+) = union
+		let sum = List.fold_left union none
+		let pp x = PP.braces (PP.space_sep (List.map Region.pp (elements x)))
+		let to_string = PP.to_string % pp
+	end
 
 and EffectVar : sig
 
@@ -1183,15 +1219,22 @@ type 'a scheme =
 		}
 
 module Scheme : sig
+	val regions_in : shape scheme -> Regions.t
 	val of_shape : shape -> shape scheme
 	val of_varinfo : Cil.varinfo -> shape scheme
+	(* TODO: Should return Effects.t *)
+	val effects_of_fun : shape scheme -> E.e E.certainty Enum.t
 	val fresh_binding : Cil.varinfo -> Cil.varinfo * shape scheme
 	val fresh_bindings : Cil.varinfo list -> (Cil.varinfo * shape scheme) list
 	val fv_of : shape scheme -> Vars.t
 	val zonk : shape scheme -> shape scheme
 end = struct
+	let regions_in sch = Shape.regions_in sch.body
 	let of_shape z = { vars = Vars.none; body = z }
 	let of_varinfo x = of_shape (Shape.of_varinfo x)
+	let effects_of_fun sch =
+		let _,f,_ = Shape.get_ref_fun sch.body in
+		E.enum_principal (EffectVar.lb_of f)
 	let fresh_binding x = x, of_varinfo x
 	let fresh_bindings = List.map fresh_binding
 	let fv_of sch = Shape.fv_of sch.body

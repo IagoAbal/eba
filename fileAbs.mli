@@ -14,9 +14,13 @@ val add_fun : t -> Cil.varinfo -> shape scheme -> FunAbs.t -> unit
 
 val find : t -> Cil.varinfo -> entry
 
+val find_fun : t -> Cil.varinfo -> shape scheme * FunAbs.t
+
 val shape_of : t -> Cil.varinfo -> shape scheme
 
 val effect_of : t -> Cil.varinfo -> Effects.t
+
+val sum : t -> Effects.t
 
 val zonk : t -> unit
 
