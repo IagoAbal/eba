@@ -30,7 +30,10 @@ type stmt = Stmt of Cil.instr list * Cil.location
 
 type cond = Cond of Cil.exp * Cil.location
 
+let loc_of_stmt (Stmt(_,loc)) = loc
+
 (* THINK: Instead of having Nil, paths_of could return t Lazy.t option *)
+(* THINK: We could enforce that every path ends in Nil, even after Return *)
 
 type t = Nil
        | Return of rexp * Effects.t
@@ -65,7 +68,7 @@ let group_by_loc fnAbs instrs :(stmt * E.t) list * E.t =
 	let stmts = iss |> List.map (fun is ->
 		let loc = Cil.get_instrLoc (List.hd is) in
 		let stmt = Stmt(is,loc) in
-		let ef = FunAbs.effect_of fnAbs loc in
+		let ef = E.principal (FunAbs.effect_of fnAbs loc) in
 		stmt, ef
 	) in
 	let effects = List.fold_left (fun acc (_,ef) ->
@@ -100,7 +103,10 @@ let rec generate fnAbs visited st :t =
 			let st' = { node = node'; effects = effects' } in
 			let next = lazy(generate fnAbs visited' st') in
 			Lazy.force(List.fold_right (fun (s,ef) nxt ->
-				lazy(Seq(s,ef,nxt))
+				(* cut off if !noret is found *)
+				if (E.mem_must E.noret ef)
+				then lazy(Seq(s,ef,lazy Nil))
+				else lazy(Seq(s,ef,nxt))
 			) iss next)
 		| Cil.Return(e_opt,loc) ->
 			let ef = FunAbs.effect_of fnAbs loc in
@@ -122,6 +128,13 @@ let rec generate fnAbs visited st :t =
 		| Cil.TryExcept _ ->
 			Error.not_implemented()
 	)
+
+(* [Note !noret]
+ * We cut off the exploration of a path if we find !noret,
+ * i.e. if an instruction will never return. CIL expressions
+ * are free of that kind of side-effects, thus we just need
+ * to check it for the `Instr' case.
+ *)
 
 let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t Lazy.t =
 	Cil.prepareCFG fd;
