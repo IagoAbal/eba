@@ -6,6 +6,7 @@ open Type
 module VarMap = Hashtbl.Make(Utils.Varinfo)
 module LocMap = Hashtbl.Make(Utils.Location)
 
+(* TODO: Store the Cil.fundec too *)
 (* THINK: Local variables have monomorphic shape schemes... so we could simplify this as vars : shape VarMap.t *)
 type t = {
 	vars : shape scheme VarMap.t;
@@ -57,6 +58,19 @@ let effect_of tbl =
 
 let sum tbl =
 	LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.locs E.none
+
+(* TODO: should be cached *)
+let effect_of_local_decl tbl fd :E.t =
+	let open Cil in
+	List.fold_left E.(fun fs x -> effect_of tbl x.vdecl + fs)
+		E.none
+		fd.slocals
+
+let uninit_locals tbl fd :Regions.t =
+	let open Effects in
+	effect_of_local_decl tbl fd
+		 |> filter is_uninits
+		 |> regions
 
 let aliased _ _ = Error.not_implemented()
 

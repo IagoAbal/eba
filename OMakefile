@@ -17,7 +17,8 @@ FILES[] =
     fiChecker
     checkFiNoret
     checkFiUninit
-    checkLocalUninit
+    flow1Checker
+    checkUninitFlow1
     checkDoubleLock
 
 OCAMLPACKS[] += batteries cil smart_print cmdliner dolog

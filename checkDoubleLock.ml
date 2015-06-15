@@ -64,7 +64,7 @@ let in_fundec fd fnAbs :report L.t =
 	let effects = FunAbs.sum fnAbs  in
 	let locks = effects |> E.principal
 	                    |> E.filter E.is_locks
-	                    |> E.regions
+	                    |> E.enum_regions
 	in
 	(* TODO: find from which variables we can access those regions *)
 	let pss = locks |> List.of_enum |> List.map (fun r ->

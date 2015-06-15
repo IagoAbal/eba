@@ -4,7 +4,6 @@ open Cmdliner
 
 module L = LazyList
 
-module CLU = CheckLocalUninit
 module CDL = CheckDoubleLock
 
 let run_checks file fileAbs :unit =
@@ -21,19 +20,14 @@ let run_checks file fileAbs :unit =
 	fds |> List.iter (fun fd ->
 		Log.debug "Analyzing function %s\n" Cil.(fd.svar.vname);
 		run_check fd CheckFiNoret.in_func;
-		run_check fd CheckFiUninit.in_func
+		run_check fd CheckFiUninit.in_func;
+		run_check fd CheckUninitFlow1.in_func
 	)
 
 let infer_file fn =
 	let file = Frontc.parse fn () in
 	let fileAbs = Infer.of_file file in
 	run_checks file fileAbs;
-	let rs = CLU.in_file file fileAbs in
-	(match L.get rs with
-	| Some (r,_) ->
-		Printf.printf "Potential BUG found:\n%s\n\n"
-			(PP.to_string (CLU.pp_report r))
-	| None   -> ());
 	let rs = CDL.in_file file fileAbs in
 	match L.get rs with
 	| Some (r,_) ->

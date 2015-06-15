@@ -678,7 +678,13 @@ and Effects : sig
 
 	val noret : e
 
+	val is_reads : e -> bool
+
+	val is_writes : e -> bool
+
 	val is_locks : e -> bool
+
+	val is_uninits : e -> bool
 
 	val just_var : EffectVar.t -> t
 
@@ -706,7 +712,9 @@ and Effects : sig
 
 	val fv_of : t -> Vars.t
 
-	val regions : t -> Region.t Enum.t
+	val regions : t -> Regions.t
+
+	val enum_regions : t -> Region.t Enum.t
 
 	val vsubst : Var.t Subst.t -> t -> t
 
@@ -830,7 +838,13 @@ and Effects : sig
 		| Mem(k1,_) -> k = k1
 		| __other__ -> false
 
+	let is_reads = is_mem Read
+
+	let is_writes = is_mem Write
+
 	let is_locks = is_mem Lock
+
+	let is_uninits = is_mem Uninit
 
 	let just_var x = just (mk_var x)
 
@@ -908,13 +922,15 @@ and Effects : sig
 		) in
 		Vars.sum xss
 
-	(* TODO: Use lazy lists *)
-	let regions ef =
+	(* TODO: Use lazy lists instead ? *)
+	let enum_regions ef =
 		let get_region = function
 			| Mem(_,r) -> Some r
 			| ________ -> None
 		in
 		ef |> enum_may |> Enum.filter_map get_region
+
+	let regions = Regions.of_enum % enum_regions
 
 	let vsubst_e (s :Var.t Subst.t) :e -> e
 		= function

@@ -30,6 +30,8 @@ val regions_of_list : t -> Cil.varinfo list -> Regions.t
 
 val effect_of : t -> Cil.location -> Effects.t
 
+val uninit_locals : t -> Cil.fundec -> Regions.t
+
 (* TODO: This should be precomputed for an immutable FunAbs.t *)
 val sum : t -> Effects.t
 
