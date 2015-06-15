@@ -626,7 +626,7 @@ end
 
 and Effects : sig
 
-	type mem_kind = Alloc | Free | Read | Write | Call | Lock | Unlock
+	type mem_kind = Alloc | Free | Read | Write | Uninit | Call | Lock | Unlock
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
@@ -663,6 +663,8 @@ and Effects : sig
 	val reads : r:Region.t -> e
 
 	val writes : r:Region.t -> e
+
+	val uninits : r:Region.t -> e
 
 	val calls : r:Region.t -> e
 
@@ -723,7 +725,7 @@ and Effects : sig
 	end
 	= struct
 
-	type mem_kind = Alloc | Free | Read | Write | Call | Lock | Unlock
+	type mem_kind = Alloc | Free | Read | Write | Uninit | Call | Lock | Unlock
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
@@ -805,6 +807,8 @@ and Effects : sig
 	let reads ~r = mk_mem Read r
 
 	let writes ~r = mk_mem Write r
+
+	let uninits ~r = mk_mem Uninit r
 
 	let calls ~r = mk_mem Call r
 
@@ -945,12 +949,13 @@ and Effects : sig
 	}
 
 	let pp_kind = function
-		| Read  -> PP.(!^ "read")
-		| Write -> PP.(!^ "write")
-		| Call  -> PP.(!^ "call")
-		| Alloc -> PP.(!^ "alloc")
-		| Free  -> PP.(!^ "free")
-		| Lock  -> PP.(!^ "lock")
+		| Read   -> PP.(!^ "read")
+		| Write  -> PP.(!^ "write")
+		| Uninit -> PP.(!^ "uninit")
+		| Call   -> PP.(!^ "call")
+		| Alloc  -> PP.(!^ "alloc")
+		| Free   -> PP.(!^ "free")
+		| Lock   -> PP.(!^ "lock")
 		| Unlock -> PP.(!^ "unlock")
 
 	let pp_e = function

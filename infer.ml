@@ -352,6 +352,28 @@ and of_block_must fnAbs env rz b : E.t * K.t =
 and of_block (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
 	 sum_f_k_weak (List.map (of_stmt fnAbs env rz) Cil.(b.bstmts))
 
+(* Marks uninitialized regions for variable declarations without initializer. *)
+let of_var_no_init x z :E.t =
+	let open Shape in
+	match (Cil.(x.vtype),z) with
+	(* Static arrays are automatically allocated but their elements are uninitialized:
+	 * Here we're matching (T[e],ref[_] ptr ref[r] _), the first reference is
+	 * statically initialized, the second is not.
+	 *)
+	| (Cil.TArray (_,Some _,_),Ref(_,Ptr(Ref(r,_))))
+	| (_, Ref(r,_)) ->
+		(* TODO: if it's global or static variable it should be [nulls r] *)
+		E.(just (uninits r))
+	| (_, _) -> Error.panic_with("variable has non-ref shape")
+
+let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :Env.t =
+	let locals_bs = Scheme.fresh_bindings locals in
+	FunAbs.add_vars fnAbs locals_bs;
+	List.iter (fun (x,sch) ->
+		FunAbs.add_loc fnAbs Cil.(x.vdecl) (of_var_no_init x sch.body)
+	) locals_bs;
+	Env.with_bindings locals_bs env
+
 (** Inference rule for function definitions
   *
   * NB: env must include the function itself (we assume it can be recursive).
@@ -360,7 +382,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		: shape scheme * K.t * FunAbs.t =
 	let fnAbs = FunAbs.create () in
 	let fn = Cil.(fd.svar) in
-	let shp' = (Env.find fn env).body in (* TODO: should it be instantiate? *)
+	let shp' = (Env.find fn env).body in (* TODO: should it be instantiated? *)
 	let f_r, shp'' = Unify.match_ref_shape shp' in
 	let z_args,f,z_res  = Shape.get_fun shp'' in
 	let args_bs = List.map2 (fun x y -> x, Scheme.of_shape y)
@@ -369,9 +391,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	in
 	let env' = Env.with_bindings args_bs env in
 	FunAbs.add_vars fnAbs args_bs;
-	let locals_bs = Scheme.fresh_bindings Cil.(fd.slocals) in
-	let env'' = Env.with_bindings locals_bs env' in
-	FunAbs.add_vars fnAbs locals_bs;
+	let env'' = of_fundec_locals env' fnAbs Cil.(fd.slocals) in
 	let body = Cil.(fd.sbody) in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
@@ -387,6 +407,17 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	(* THINK: Maybe we should generalize in of_global *)
 	let sch, k3 = generalize_fun (Env.remove fn env) k2 f_r shp'' fnAbs in
 	sch, k3, fnAbs
+
+let of_gvar_init env x :Cil.init -> E.t * K.t = function
+	| Cil.SingleInit e ->
+		let ze, fe, ke = of_exp env e in
+		let f1, k1 = with_lval_set env ze fe ke (Cil.var x) in
+		f1, k1
+	| Cil.CompoundInit _ -> Error.not_implemented()
+
+let of_gvar env x z :Cil.init option -> E.t * K.t = function
+	| None      -> of_var_no_init x z, K.none
+	| Some init -> of_gvar_init env x init
 
 let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
 	(* THINK: Do we need to do anything here? CIL has this unrollType helper
@@ -412,16 +443,10 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 		let env' = Env.fresh_if_absent x env in
 		Log.info "Global variable %s : %s\n" xn (Shape.to_string (Env.find x env').body);
 		(* THINK: move to of_init *)
-		let ef, k' = Cil.(ii.init) |> Option.map_default (function
-			| Cil.SingleInit e ->
-				let ze, fe, ke = of_exp env e in
-				let f1, k1 = with_lval_set env' ze fe ke (Cil.var x) in
-				f1, K.(k + k1)
-			| Cil.CompoundInit _ -> Error.not_implemented()
-		) (E.none, k)
-		in
-		FileAbs.add_var fileAbs x (Env.find x env') ef;
-		env', k'
+		let sch_x = Env.find x env' in
+		let ef, ki = of_gvar env' x sch_x.body Cil.(ii.init) in
+		FileAbs.add_var fileAbs x sch_x ef;
+		env', K.(k + ki)
 	| Cil.GFun (fd,_) ->
 		let fn = Cil.(fd.svar) in
 		Log.debug "In function %s\n" Cil.(fn.vname);
