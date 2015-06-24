@@ -682,6 +682,8 @@ and Effects : sig
 
 	val is_writes : e -> bool
 
+	val is_uninit : e -> bool
+
 	val is_locks : e -> bool
 
 	val is_uninits : e -> bool
@@ -841,6 +843,8 @@ and Effects : sig
 	let is_reads = is_mem Read
 
 	let is_writes = is_mem Write
+
+	let is_uninit = is_mem Uninit
 
 	let is_locks = is_mem Lock
 
