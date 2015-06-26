@@ -24,26 +24,22 @@ module States = Set.Make(
 
 type visited = States.t
 
-type rexp = Rexp of Cil.exp option * Cil.location
-
-type stmt = Stmt of Cil.instr list * Cil.location
+type step = Stmt of Cil.instr list * Cil.location
+          | Test of Cil.exp        * Cil.location
+          | Ret  of Cil.exp option * Cil.location
 
 type cond = Cond of Cil.exp * Cil.location
 
-let loc_of_stmt (Stmt(_,loc)) = loc
-
-(* THINK: Instead of having Nil, paths_of could return t Lazy.t option *)
-(* THINK: We could enforce that every path ends in Nil, even after Return *)
+let loc_of_step = function
+	| Stmt(_,loc)
+	| Test(_,loc)
+	| Ret (_,loc) ->
+		loc
 
 type t = Nil
-       | Return of rexp * Effects.t
-       | Seq of stmt * Effects.t * t Lazy.t
-	   (* TODO: We should split the If node into two, in case we want
-	    * to resume a reachability query from an `if' without examining
-	    * the condition again. Fortunately, expressions have limited
-	    * effects in CIL, mostly read-only.
-	    *)
-       | If of cond * Effects.t * t Lazy.t * t Lazy.t
+       | Assume of cond * bool * t Lazy.t
+       | Seq of step * Effects.t * t Lazy.t
+       | If of t Lazy.t * t Lazy.t
 
 let if_not_visited visited st f =
 	if States.mem st visited
@@ -62,7 +58,7 @@ let if_not_visited visited st f =
  * instructions (which can go into Utils) and the other
  * takes the effects.
  *)
-let group_by_loc fnAbs instrs :(stmt * E.t) list * E.t =
+let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
 	assert(not(List.is_empty instrs));
 	let iss = List.group_consecutive Utils.instr_same_loc instrs in
 	let stmts = iss |> List.map (fun is ->
@@ -109,9 +105,9 @@ let rec generate fnAbs visited st :t =
 				else lazy(Seq(s,ef,nxt))
 			) iss next)
 		| Cil.Return(e_opt,loc) ->
+			let ret = Ret(e_opt,loc) in
 			let ef = FunAbs.effect_of fnAbs loc in
-			let rexp = Rexp(e_opt,loc) in
-			Return(rexp,ef)
+			Seq(ret,ef,lazy Nil)
 		| Cil.If (e,_,_,loc) ->
 			let cond = Cond(e,loc) in
 			let ef = FunAbs.effect_of fnAbs loc in
@@ -121,7 +117,13 @@ let rec generate fnAbs visited st :t =
 				let st' = { node = node'; effects = effects' } in
 				lazy(generate fnAbs visited' st')
 			) in
-			If(cond,ef,alt1,alt2)
+			let test = Test(e,loc) in
+			let alts =
+				let left  = lazy (Assume(cond,true,alt1))  in
+				let right = lazy (Assume(cond,false,alt2)) in
+				lazy(If(left,right))
+			in
+			Seq(test,ef,alts)
 		| Cil.ComputedGoto _
 		| Cil.Switch _
 		| Cil.TryFinally _
@@ -170,25 +172,36 @@ type st_pred = Effects.t -> bool
 (* TODO: We should return the statement or expression together with the location *)
 
 let rec reachable t ~guard ~target :(Cil.location * path * t Lazy.t) L.t =
+	let open L in
 	match Lazy.force t with
-	| Return(Rexp(_,loc),ef) when target ef ->
-		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc (lazy Nil)
-	| Seq(Stmt(_,loc),ef,t') when target ef ->
-		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc t'
-	| Seq(Stmt(_,loc),ef,t') when guard ef ->
-		Log.debug "reachable guard at %s" (Utils.Location.to_string loc);
-		reachable t' guard target
-	| If(Cond(_,loc),ef,_,_) when target ef ->
-		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc t
-	| If(c,ef,t1,t2) when guard ef ->
-		let dec1 = Dec(c,false) in
-		let dec2 = Dec(c,true) in
-		let br1 = L.map (push_dec dec1) (reachable t1 guard target) in
-		let br2 = L.map (push_dec dec2) (reachable t2 guard target) in
-		L.append br1 br2
+	| Assume(cond,b,t') ->
+		let dec = Dec(cond,b) in
+		map (push_dec dec) (reachable t' guard target)
+	| Seq(step,ef,t') ->
+	   record_if_matches ~target step ef t'
+		^@^ keep_searching ~guard ~target step ef t'
+	| If(t1,t2) ->
+		let br1 = reachable t1 guard target in
+		let br2 = reachable t2 guard target in
+		br1 ^@^ br2
 	(* TODO: Allow to specify how many levels of Loop to investigate *)
 	| __otherwise__ ->
 		backtrack
+
+and record_if_matches ~target step ef t' =
+	let loc = loc_of_step step in
+	if target ef
+	then begin
+		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
+		at_loc loc t'
+	end
+	else L.nil
+
+and keep_searching ~guard ~target step ef t' =
+	let loc = loc_of_step step in
+	if guard ef
+	then begin
+		Log.debug "reachable guard at %s" (Utils.Location.to_string loc);
+		reachable t' guard target
+	end
+	else L.nil

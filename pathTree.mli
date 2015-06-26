@@ -3,19 +3,29 @@ open Batteries
 
 open Type
 
-(** Result expression (if any). *)
-type rexp = Rexp of Cil.exp option * Cil.location
+(* A computation step: either the execution of an statement;
+ * the evaluation of a branch condition; or the return of
+ * a function (possibly) with an expression.
+ *)
+type step = Stmt of Cil.instr list * Cil.location
+          | Test of Cil.exp        * Cil.location
+          | Ret  of Cil.exp option * Cil.location
 
-(** Statement decomposed into CIL instructions. *)
-type stmt = Stmt of Cil.instr list * Cil.location
+val loc_of_step : step -> Cil.location
 
 (** If condition. *)
 type cond = Cond of Cil.exp * Cil.location
 
+(* Execution paths.
+ *
+ * NB:
+ * - Every path ends with [Nil].
+ * - Path conditions are encoded with [Assume].
+ *)
 type t = Nil
-       | Return of rexp * Effects.t
-       | Seq of stmt * Effects.t * t Lazy.t
-       | If of cond * Effects.t * t Lazy.t * t Lazy.t
+       | Assume of cond * bool * t Lazy.t
+       | Seq of step * Effects.t * t Lazy.t
+       | If of t Lazy.t * t Lazy.t
 
 (* Compute an approximation of all execution paths in a function.
  *
