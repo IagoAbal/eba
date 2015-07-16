@@ -660,6 +660,10 @@ and Effects : sig
 
 	val none : t
 
+	val allocs : r:Region.t -> e
+
+	val frees : r:Region.t -> e
+
 	val reads : r:Region.t -> e
 
 	val writes : r:Region.t -> e
@@ -803,6 +807,10 @@ and Effects : sig
 		  may  = EffectSet.singleton e
 		; must = EffectSet.singleton e
 	}
+
+	let allocs ~r = mk_mem Alloc r
+
+	let frees ~r = mk_mem Free r
 
 	let reads ~r = mk_mem Read r
 

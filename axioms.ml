@@ -44,14 +44,13 @@ let assert_fail :axiom =
 	in
 	Axiom("__assert_fail", {vars; body})
 
-(* TODO: malloc effect *)
 let malloc :axiom =
 	let r0 = Region.meta() in
 	let r1 = Region.bound() in
 	let r2 = Region.bound() in
 	let z1 = Shape.bound_var() in
 	let f1 = EffectVar.bound_with
-		E.(none +. reads r1)
+		E.(none +. reads r1 +. allocs r2 +. uninits r2)
 	in
 	let arg1 = Shape.(Ref(r1,Bot)) in
 	let vars =
@@ -68,14 +67,13 @@ let malloc :axiom =
 	in
 	Axiom("malloc", {vars; body})
 
-(* TODO: free effect *)
 let free :axiom =
 	let r0 = Region.meta() in
 	let r1 = Region.bound() in
 	let r2 = Region.bound() in
 	let z1 = Shape.bound_var() in
 	let f1 = EffectVar.bound_with
-		E.(none +. reads r1)
+		E.(none +. reads r1 +. frees r2 +. uninits r2)
 	in
 	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Var z1)))) in
 	let vars =
