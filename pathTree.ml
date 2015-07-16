@@ -6,23 +6,38 @@ open Type
 
 module L = LazyList
 
-type state = {
-	node    : Cil.stmt;
-	effects : Effects.t;
-}
-
-module States = Set.Make(
+module Edges = Set.Make(
 	struct
-		type t = state
-		let compare s1 s2 =
-			let node_cmp = Cil.(compare s1.node.sid s2.node.sid) in
-			if node_cmp = 0
-			then Effects.compare s1.effects s2.effects
-			else node_cmp
+		type t = int * int
+		let compare = Pervasives.compare
 	end
 )
 
-type visited = States.t
+type visited = Edges.t
+
+let succs_of visited node : (Cil.stmt * visited) list =
+	let open Cil in
+	assert(not(List.is_empty node.succs));
+	node.succs |> List.filter_map (fun node' ->
+		let edge = node.sid, node'.sid in
+		if Edges.mem edge visited
+		then None
+		else
+			let visited' = Edges.add edge visited in
+			Some (node', visited')
+	)
+
+let next_lone visited node : (Cil.stmt * visited) option =
+	match succs_of visited node with
+	| []     -> None
+	| [next] -> Some next
+	| _other -> Error.panic()
+
+let next_one visited node =
+	let open Option in
+	let lnext = next_lone visited node in
+	assert (is_some lnext);
+	get lnext
 
 type step = Stmt of Cil.instr list * Cil.location
           | Test of Cil.exp        * Cil.location
@@ -40,11 +55,6 @@ type t = Nil
        | Assume of cond * bool * t Lazy.t
        | Seq of step * Effects.t * t Lazy.t
        | If of t Lazy.t * t Lazy.t
-
-let if_not_visited visited st f =
-	if States.mem st visited
-	then Nil
-	else f()
 
 (* Group instructions by location
  *
@@ -73,63 +83,54 @@ let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
 	in
 	stmts, effects
 
-let rec generate fnAbs visited st :t =
-	if_not_visited visited st (fun () ->
-		let visited' = States.add st visited in
-		let {node; effects} = st in
-		let sk = Cil.(node.skind) in
-		match sk with
-		| Cil.Instr [] (* label: e.g. as a result of prepareCFG *)
-		| Cil.Goto _
-		| Cil.Break _
-		| Cil.Continue _
-		| Cil.Loop _
-		| Cil.Block _ ->
-			let succs = Cil.(st.node.succs) in
-			assert(not(List.is_empty succs));
-			let node' = List.hd succs in
-			let st' = { st with node = node' } in
-			generate fnAbs visited' st'
-		| Cil.Instr instrs ->
-			let succs = Cil.(node.succs) in
-			assert(not(List.is_empty succs));
-			let node' = List.hd succs in
-			let iss, ef = group_by_loc fnAbs instrs in
-			let effects' = E.(ef + effects) in
-			let st' = { node = node'; effects = effects' } in
-			let next = lazy(generate fnAbs visited' st') in
-			Lazy.force(List.fold_right (fun (s,ef) nxt ->
+let rec generate fnAbs visited node :t =
+	let sk = Cil.(node.skind) in
+	match sk with
+	| Cil.Instr [] (* label: e.g. as a result of prepareCFG *)
+	| Cil.Goto _
+	| Cil.Break _
+	| Cil.Continue _
+	| Cil.Loop _
+	| Cil.Block _ ->
+		generate_if_next fnAbs visited node
+	| Cil.Instr instrs ->
+		let node', visited' = next_one visited node in
+		let iss, ef = group_by_loc fnAbs instrs in
+		let next = lazy(generate fnAbs visited' node') in
+		Lazy.force(List.fold_right (fun (s,ef) nxt ->
 				(* cut off if !noret is found *)
-				if (E.mem_must E.noret ef)
-				then lazy(Seq(s,ef,lazy Nil))
-				else lazy(Seq(s,ef,nxt))
-			) iss next)
-		| Cil.Return(e_opt,loc) ->
-			let ret = Ret(e_opt,loc) in
-			let ef = FunAbs.effect_of fnAbs loc in
-			Seq(ret,ef,lazy Nil)
-		| Cil.If (e,_,_,loc) ->
-			let cond = Cond(e,loc) in
-			let ef = FunAbs.effect_of fnAbs loc in
-			let effects' = E.(ef + st.effects) in
-			let succs = Utils.match_pair Cil.(st.node.succs) in
-			let (alt1,alt2) = succs |> Tuple2.mapn (fun node' ->
-				let st' = { node = node'; effects = effects' } in
-				lazy(generate fnAbs visited' st')
-			) in
-			let test = Test(e,loc) in
-			let alts =
-				let left  = lazy (Assume(cond,true,alt1))  in
-				let right = lazy (Assume(cond,false,alt2)) in
-				lazy(If(left,right))
-			in
-			Seq(test,ef,alts)
-		| Cil.ComputedGoto _
-		| Cil.Switch _
-		| Cil.TryFinally _
-		| Cil.TryExcept _ ->
-			Error.not_implemented()
-	)
+			if (E.mem_must E.noret ef)
+			then lazy(Seq(s,ef,lazy Nil))
+			else lazy(Seq(s,ef,nxt))
+		) iss next)
+	| Cil.Return(e_opt,loc) ->
+		let ret = Ret(e_opt,loc) in
+		let ef = FunAbs.effect_of fnAbs loc in
+		Seq(ret,ef,lazy Nil)
+	| Cil.If (e,_,_,loc) ->
+		let cond = Cond(e,loc) in
+		let ef = FunAbs.effect_of fnAbs loc in
+		let succs = Utils.match_pair (succs_of visited node) in
+		let (alt1,alt2) = succs |> Tuple2.mapn (fun (node',visited') ->
+			lazy(generate fnAbs visited' node')
+		) in
+		let test = Test(e,loc) in
+		let alts =
+			let left  = lazy (Assume(cond,true,alt1))  in
+			let right = lazy (Assume(cond,false,alt2)) in
+			lazy(If(left,right))
+		in
+		Seq(test,ef,alts)
+	| Cil.ComputedGoto _
+	| Cil.Switch _
+	| Cil.TryFinally _
+	| Cil.TryExcept _ ->
+		Error.not_implemented()
+
+and generate_if_next fnAbs visited node =
+	match next_lone visited node with
+	| None                  -> Nil
+	| Some (node',visited') -> generate fnAbs visited' node'
 
 (* [Note !noret]
  * We cut off the exploration of a path if we find !noret,
@@ -144,9 +145,7 @@ let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t Lazy.t =
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> Lazy.from_val Nil
-	| nd0::_ ->
-		let st0 = { node = nd0; effects = E.none } in
-		lazy(generate fnAbs States.empty st0)
+	| nd0::_ ->	lazy(generate fnAbs Edges.empty nd0)
 
 type path_dec = Dec of cond * bool
 
