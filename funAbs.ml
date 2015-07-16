@@ -88,7 +88,7 @@ let pp_vars =
 	(* THINK: mostly duplicated from Env.pp, refactor? *)
 	let pp_binding (x,sch) =
 		let loc = Cil.(x.vdecl) in
-		let n = Cil.(x.vname) in
+		let n = Utils.cyan (Cil.(x.vname)) in
 		loc, PP.(!^ n ++ colon ++ Shape.pp sch.body)
 	in
 	Utils.Location.pp_with_loc %

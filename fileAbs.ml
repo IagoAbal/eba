@@ -63,13 +63,13 @@ let finalize = VarMap.map_inplace (fun _ -> finalize_entry)
 let pp_var_entry x sch ef :Cil.location * PP.doc =
 	let loc = Cil.(x.vdecl) in
 	let n = Cil.(x.vname) in
-	loc, PP.(!^ n ++ colon ++ Shape.pp sch.body ++ !^ "&" ++ Effects.pp ef)
+	loc, PP.(!^ (Utils.cyan n) ++ colon ++ Shape.pp sch.body ++ !^ "&" ++ Effects.pp ef)
 
 let pp_fun_entry fx sch fnAbs :Cil.location * PP.doc =
 	let loc = Cil.(fx.vdecl) in
 	let fn = Cil.(fx.vname) in
 	let fun_pp = PP.(
-		!^ fn ++ colon ++ Shape.pp sch.body
+		!^ (Utils.cyan fn) ++ colon ++ Shape.pp sch.body
 		+ newline
 		+ PP.indent (FunAbs.pp fnAbs)
 	) in

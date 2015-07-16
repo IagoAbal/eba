@@ -441,8 +441,8 @@ end = struct
 	(* THINK: Should I refactor this into PP.tyvar ? *)
 	let pp r =
 		let vt_str = if is_meta r then "?" else "'" in
-		let id_pp = Uniq.pp (uniq_of r) in
-		PP.(!^ vt_str + !^ "r" + id_pp)
+		let id_str = Uniq.to_string (uniq_of r) in
+		PP.(!^ (Utils.green (vt_str ^ "r" ^ id_str)))
 
 	let to_string = PP.to_string % pp
 
@@ -984,20 +984,22 @@ and Effects : sig
 		; must = EffectSet.map zonk_e fs.must
 	}
 
-	let pp_kind = function
-		| Read   -> PP.(!^ "read")
-		| Write  -> PP.(!^ "write")
-		| Uninit -> PP.(!^ "uninit")
-		| Call   -> PP.(!^ "call")
-		| Alloc  -> PP.(!^ "alloc")
-		| Free   -> PP.(!^ "free")
-		| Lock   -> PP.(!^ "lock")
-		| Unlock -> PP.(!^ "unlock")
+	let string_of_kind = function
+		| Read   -> "read"
+		| Write  -> "write"
+		| Uninit -> "uninit"
+		| Call   -> "call"
+		| Alloc  -> "alloc"
+		| Free   -> "free"
+		| Lock   -> "lock"
+		| Unlock -> "unlock"
+
+	let pp_kind k = PP.(!^) (Utils.purple (string_of_kind k))
 
 	let pp_e = function
 		| Var x    -> EffectVar.pp x
 		| Mem(k,r) -> PP.(pp_kind k + brackets(Region.pp r))
-		| Noret    -> PP.(!^ "noret")
+		| Noret    -> PP.(!^ (Utils.purple "noret"))
 
 	let group_effects : e list -> e list list =
 		let same_kind e1 e2 =
