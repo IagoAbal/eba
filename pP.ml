@@ -25,6 +25,8 @@ let bool = SP.OCaml.bool
 
 let int = SP.OCaml.int
 
+let prefix str doc = !^ str + doc
+
 let parens = SP.parens
 
 let braces = SP.braces

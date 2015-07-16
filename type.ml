@@ -995,15 +995,36 @@ and Effects : sig
 		| Unlock -> PP.(!^ "unlock")
 
 	let pp_e = function
-		| Var x    -> EffectVar.pp_lb x
+		| Var x    -> EffectVar.pp x
 		| Mem(k,r) -> PP.(pp_kind k + brackets(Region.pp r))
 		| Noret    -> PP.(!^ "noret")
 
+	let group_effects : e list -> e list list =
+		let same_kind e1 e2 =
+			match (e1,e2) with
+			| (Mem(k1,_),Mem(k2,_)) -> Pervasives.compare k1 k2
+			| _other                -> compare_e e1 e2
+		in
+		List.group same_kind
+
+	let pp_group : e list -> PP.doc = function
+		| (Mem(k,_)::_) as es ->
+			let pp_rs = List.map (function
+				| (Mem(_,r)) -> Region.pp r
+				| _other____ -> Error.panic()
+			) es
+			in
+			PP.(pp_kind k + brackets(PP.comma_sep pp_rs))
+		| [e]                 -> pp_e e
+		| _other_____________ -> Error.panic()
+
 	let pp fs =
-		let strictly_may = EffectSet.diff fs.may fs.must in
-		let pp_mays = List.map pp_e (EffectSet.to_list strictly_may) in
-		let pp_must = List.map (fun x -> PP.(!^ "!" + pp_e x)) (EffectSet.to_list fs.must) in
-		PP.braces(PP.space_sep (pp_mays @ pp_must))
+		let open EffectSet in
+		let grouped = group_effects % to_list in
+		let strictly_may = diff fs.may fs.must in
+		let pp_mays = List.map pp_group (grouped strictly_may) in
+		let pp_must = List.map (PP.prefix "!" % pp_group) (grouped fs.must) in
+		PP.braces(PP.space_sep (pp_must @ pp_mays))
 
 	let to_string :t -> string = PP.to_string % pp
 
