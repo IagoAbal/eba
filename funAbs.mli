@@ -22,6 +22,8 @@ val fv_of : t -> Vars.t
 
 val zonk : t -> unit
 
+val finalize : t -> unit
+
 val shape_of : t -> Cil.varinfo -> shape scheme
 
 val regions_of : t -> Cil.varinfo -> Regions.t

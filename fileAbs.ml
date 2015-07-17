@@ -47,17 +47,17 @@ let sum tbl =
 		E.(ef + acc)
 	) tbl E.none
 
-let zonk_entry = function
+let finalize_entry = function
 	| Var(sch,ef) ->
 		let sch' = Scheme.zonk sch in
-		let ef' = Effects.zonk ef in
+		let ef' = Effects.(principal (zonk ef)) in
 		Var(sch',ef')
 	| Fun(sch,fnAbs) ->
 		let sch' = Scheme.zonk sch in
-		FunAbs.zonk fnAbs;
+		FunAbs.finalize fnAbs;
 		Fun(sch',fnAbs)
 
-let zonk = VarMap.map_inplace (fun _ -> zonk_entry)
+let finalize = VarMap.map_inplace (fun _ -> finalize_entry)
 
 (* THINK: mostly duplicated from Env.pp, refactor? export Env.pp_binding? *)
 let pp_var_entry x sch ef :Cil.location * PP.doc =

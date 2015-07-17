@@ -22,11 +22,11 @@ module Spec = struct
 		(* TODO: Define list : Regions.t -> Region.t LazyList.t *)
 		L.of_enum (Regions.enum target)
 
-	let may_write r ef :bool = E.(mem (writes r) (principal ef))
+	let may_write r ef :bool = E.(mem (writes r) ef)
 
 	let not_writes r ef :bool = not (may_write r ef)
 
-	let reads r ef :bool = E.(mem_must (reads r) (principal ef))
+	let reads r ef :bool = E.(mem_must (reads r) ef)
 
 	let reads_and_not_writes r ef = reads r ef && not_writes r ef
 

@@ -74,7 +74,7 @@ let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
 	let stmts = iss |> List.map (fun is ->
 		let loc = Cil.get_instrLoc (List.hd is) in
 		let stmt = Stmt(is,loc) in
-		let ef = E.principal (FunAbs.effect_of fnAbs loc) in
+		let ef = FunAbs.effect_of fnAbs loc in
 		stmt, ef
 	) in
 	let effects = List.fold_left (fun acc (_,ef) ->

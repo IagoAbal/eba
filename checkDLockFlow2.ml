@@ -11,15 +11,15 @@ module Spec = struct
 	type st = Region.t
 
 	let select fileAbs fd fsch fnAbs =
-		let feffects = E.principal (FunAbs.sum fnAbs) in
+		let feffects = FunAbs.sum fnAbs in
 		let locked = E.(regions(filter is_locks feffects)) in
 		L.of_enum (Regions.enum locked)
 
-	let may_unlock r ef :bool =	E.(mem (unlocks r) (principal ef))
+	let may_unlock r ef :bool =	E.(mem (unlocks r) ef)
 
 	let not_unlocks r ef :bool = not (may_unlock r ef)
 
-	let locks r ef :bool = E.(mem_must (locks r) (principal ef))
+	let locks r ef :bool = E.(mem_must (locks r) ef)
 
 	let locks_and_not_unlocks r ef = locks r ef && not_unlocks r ef
 

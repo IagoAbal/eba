@@ -42,9 +42,17 @@ let fv_of tbl =
 		Vars.(Effects.fv_of ef + fvs)
 	) tbl.locs fv1
 
-let zonk tbl =
-	VarMap.map_inplace (fun _x -> Scheme.zonk) tbl.vars;
-	LocMap.map_inplace (fun _loc -> Effects.zonk) tbl.locs
+let map_inplace f g tbl =
+	VarMap.map_inplace f tbl.vars;
+	LocMap.map_inplace g tbl.locs
+
+let zonk = map_inplace
+	(fun _x -> Scheme.zonk)
+	(fun _loc -> Effects.zonk)
+
+let finalize = map_inplace
+	(fun _x -> Scheme.zonk)
+	(fun _loc -> Effects.(principal % zonk))
 
 let shape_of tbl =
 	VarMap.find tbl.vars

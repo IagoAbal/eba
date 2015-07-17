@@ -54,6 +54,8 @@ let generalize_fun env k r z fnAbs
 	FunAbs.zonk fnAbs;
 	sch, k1
 
+(* THINK: We should not need to operate on Enum.t *)
+(* THINK: We can fuse zonk and filter with filter_map *)
 let observe (env :Env.t) ef :E.t =
 	let env_fv = Env.fv_of (Env.zonk env) in
     let is_observable = function
@@ -495,6 +497,6 @@ let of_file (file : Cil.file) :FileAbs.t =
 		Cil.(file.globals)
 	in
 	Log.debug "Env:\n %s\n" (Env.to_string (Env.zonk env1));
-	FileAbs.zonk fileAbs;
+	FileAbs.finalize fileAbs;
 	Log.info "FileAbs:\n%s\n" (FileAbs.to_string fileAbs);
 	fileAbs

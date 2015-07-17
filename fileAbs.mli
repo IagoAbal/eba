@@ -22,7 +22,7 @@ val effect_of : t -> Cil.varinfo -> Effects.t
 
 val sum : t -> Effects.t
 
-val zonk : t -> unit
+val finalize : t -> unit
 
 val pp : t -> PP.doc
 
