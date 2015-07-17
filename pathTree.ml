@@ -116,8 +116,8 @@ let rec generate fnAbs visited node :t =
 		) in
 		let test = Test(e,loc) in
 		let alts =
-			let left  = lazy (Assume(cond,true,alt1))  in
-			let right = lazy (Assume(cond,false,alt2)) in
+			let left  = lazy (Assume(cond,false,alt1))  in
+			let right = lazy (Assume(cond,true,alt2)) in
 			lazy(If(left,right))
 		in
 		Seq(test,ef,alts)
