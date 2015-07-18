@@ -639,6 +639,10 @@ and Effects : sig
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
 		   | Noret
+		   | IrqsOn
+		   | IrqsOff
+		   | BhsOn
+		   | BhsOff
 
 	type 'a certainty = private Must of 'a | May of 'a
 
@@ -752,6 +756,10 @@ and Effects : sig
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t
 		   | Noret
+		   | IrqsOn
+		   | IrqsOff
+		   | BhsOn
+		   | BhsOff
 
 	type 'a certainty = Must of 'a | May of 'a
 
@@ -789,12 +797,7 @@ and Effects : sig
 			if cmp_k = 0
 			then Region.compare r1 r2
 			else cmp_k
-		| (Noret,Noret) ->  0
-		| (Var _,Mem _) -> -1
-		| (Var _,Noret) -> -1
-		| (Mem _,Var _) ->  1
-		| (Mem _,Noret) -> -1
-		| (Noret,_____) ->  1
+		| _other -> Pervasives.compare f1 f2
 
 	let (=.) e1 e2 = compare_e e1 e2 = 0
 
@@ -930,7 +933,7 @@ and Effects : sig
 		let xss = ff |> List.map (function
 			| Var x    -> EffectVar.fv_of x
 			| Mem(_,r) -> Vars.singleton (Var.Region r)
-			| Noret    -> Vars.none
+			| _other   -> Vars.none
 		) in
 		Vars.sum xss
 
@@ -948,7 +951,7 @@ and Effects : sig
 		= function
 		| Var x     -> Var (EffectVar.vsubst s x)
 		| Mem (k,r) -> Mem (k,Region.vsubst s r)
-		| Noret     -> Noret
+		| e         -> e
 
 	let vsubst (s :Var.t Subst.t) fs :t = {
 		  may  = EffectSet.map (vsubst_e s) fs.may
@@ -977,7 +980,7 @@ and Effects : sig
 		| Var f    -> Var (EffectVar.zonk f)
 		| Mem(k,r) -> let r' = Region.zonk r in
 					  Mem(k,r')
-		| Noret    -> Noret
+		| e        -> e
 
 	let zonk fs = {
 		  may  = EffectSet.map zonk_e fs.may
@@ -1000,6 +1003,10 @@ and Effects : sig
 		| Var x    -> EffectVar.pp x
 		| Mem(k,r) -> PP.(pp_kind k + brackets(Region.pp r))
 		| Noret    -> PP.(!^ (Utils.purple "noret"))
+		| IrqsOn   -> PP.(!^ (Utils.purple "irqson"))
+		| IrqsOff  -> PP.(!^ (Utils.purple "irqsoff"))
+		| BhsOn    -> PP.(!^ (Utils.purple "bhson"))
+		| BhsOff   -> PP.(!^ (Utils.purple "bhsoff"))
 
 	let group_effects : e list -> e list list =
 		let same_kind e1 e2 =

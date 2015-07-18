@@ -61,7 +61,7 @@ let observe (env :Env.t) ef :E.t =
     let is_observable = function
 		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
 		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
-		| E.Noret     -> true
+		| _other      -> true
 	in
 	let open Effects in
 	let filter_observable = Enum.filter (is_observable % uncertain) in

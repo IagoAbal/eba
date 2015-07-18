@@ -20,7 +20,8 @@ let run_checks file fileAbs :unit =
 		run_check fd CheckFiNoret.in_func;
 		run_check fd CheckFiUninit.in_func;
 		run_check fd CheckUninitFlow1.in_func;
-		run_check fd CheckDLockFlow2.in_func
+		run_check fd CheckDLockFlow2.in_func;
+		run_check fd CheckBhOnIrqFlow2.in_func;
 	)
 
 let infer_file fn =

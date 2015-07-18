@@ -21,6 +21,7 @@ FILES[] =
     checkUninitFlow1
     flow2Checker
     checkDLockFlow2
+    checkBhOnIrqFlow2
 
 OCAMLPACKS[] += batteries cil smart_print cmdliner dolog
 OCAMLFLAGS += -thread

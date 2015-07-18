@@ -162,6 +162,84 @@ let spin_unlock :axiom =
 	in
 	Axiom("spin_unlock", {vars; body})
 
+let spin_lock_irq :axiom =
+	let r0 = Region.meta() in
+	let r1 = Region.bound() in
+	let r2 = Region.bound() in
+	let f1 = EffectVar.bound_with
+		E.(just (locks r2) +. reads r1
+		   +. reads r2 +. writes r2
+		   +. IrqsOff
+		)
+	in
+	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
+	let vars =
+		let open Var in
+		let regions = List.map (fun r -> Region r) in
+		Vars.of_list ([Effect f1] @ regions [r1;r2])
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = [arg1]
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("spin_lock_irq", {vars; body})
+
+let spin_unlock_irq :axiom =
+	let r0 = Region.meta() in
+	let r1 = Region.bound() in
+	let r2 = Region.bound() in
+	let f1 = EffectVar.bound_with
+		E.(just (unlocks r2) +. reads r1
+		   +. reads r2 +. writes r2
+		   +. IrqsOn
+		)
+	in
+	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
+	let vars =
+		let open Var in
+		let regions = List.map (fun r -> Region r) in
+		Vars.of_list ([Effect f1] @ regions [r1;r2])
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = [arg1]
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("spin_unlock_irq", {vars; body})
+
+let local_bh_enable :axiom =
+	let r0 = Region.meta() in
+	let f1 = EffectVar.bound_with E.(just BhsOn) in
+	let vars = Vars.of_list [Var.Effect f1]
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = []
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("local_bh_enable", {vars; body})
+
+let local_bh_disable :axiom =
+	let r0 = Region.meta() in
+	let f1 = EffectVar.bound_with E.(just BhsOff) in
+	let vars = Vars.of_list [Var.Effect f1]
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = []
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("local_bh_disable", {vars; body})
+
 (* Axiom table *)
 
 let add_axiom tbl (Axiom(fn,sch)) = Hashtbl.add tbl fn sch
@@ -174,6 +252,10 @@ let axiom_map : (name,shape scheme) Hashtbl.t  =
 	add_axiom tbl memcpy;
 	add_axiom tbl spin_lock;
 	add_axiom tbl spin_unlock;
+	add_axiom tbl spin_lock_irq;
+	add_axiom tbl spin_unlock_irq;
+	add_axiom tbl local_bh_enable;
+	add_axiom tbl local_bh_disable;
 	tbl
 
 let find fn = Hashtbl.Exceptionless.find axiom_map fn
