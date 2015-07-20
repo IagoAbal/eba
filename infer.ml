@@ -367,13 +367,19 @@ let of_var_no_init x z :E.t =
 		E.(just (uninits r))
 	| (_, _) -> Error.panic_with("variable has non-ref shape")
 
-let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :Env.t =
+let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
 	let locals_bs = Scheme.fresh_bindings locals in
 	FunAbs.add_vars fnAbs locals_bs;
-	List.iter (fun (x,sch) ->
-		FunAbs.add_loc fnAbs Cil.(x.vdecl) (of_var_no_init x sch.body)
-	) locals_bs;
-	Env.with_bindings locals_bs env
+	let ef = List.fold_left (fun ef (x,sch) ->
+		let xf = of_var_no_init x sch.body in
+		(* THINK: The implicit effects of local declarations may
+		   better be cached in a different way than regular
+		   statement effects. *)
+		FunAbs.add_loc fnAbs Cil.(x.vdecl) xf;
+		E.(xf + ef)
+	) E.none locals_bs
+	in
+	ef, Env.with_bindings locals_bs env
 
 (** Inference rule for function definitions
   *
@@ -392,19 +398,20 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	in
 	let env' = Env.with_bindings args_bs env in
 	FunAbs.add_vars fnAbs args_bs;
-	let env'' = of_fundec_locals env' fnAbs Cil.(fd.slocals) in
+	let lf, env'' = of_fundec_locals env' fnAbs Cil.(fd.slocals) in
 	let body = Cil.(fd.sbody) in
 	(* THINK: Maybe we don't need to track constraints but just compute them
 	   as the FV of the set of effects computed for the body of the function? *)
 	let bf, k1 = of_block_must fnAbs env'' z_res body in
-	let bf' = observe env' bf in (* FIXME in the paper: not env but env'! *)
-	(* f >= bf' may introduce a recursive subeffecting constraint
+	let ff = E.(lf + bf) in
+	let ff' = observe env' ff in (* FIXME in the paper: not env but env'! *)
+	(* f >= ff' may introduce a recursive subeffecting constraint
 	   if the function is recursive.
-	   Possible FIX? Create a new fresh effect variable? f' >= bf'?
-	   Possible FIX? Remove f from bf'?
+	   Possible FIX? Create a new fresh effect variable? f' >= ff'?
+	   Possible FIX? Remove f from ff'?
 	   What about mutually recursive functions?
 	 *)
-	let k2 = K.add f bf' k1 in
+	let k2 = K.add f ff' k1 in
 	(* THINK: Maybe we should generalize in of_global *)
 	let sch, k3 = generalize_fun (Env.remove fn env) k2 f_r shp'' fnAbs in
 	sch, k3, fnAbs
