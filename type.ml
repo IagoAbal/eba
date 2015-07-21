@@ -452,6 +452,7 @@ and Regions : sig
 	include Set.S with type elt := Region.t
 	val none : t
 	val (+) : t -> t -> t
+	val (-) : t -> t -> t
 	val sum : t list -> t
 	val pp : t -> PP.doc
 	val to_string : t -> string
@@ -460,6 +461,7 @@ and Regions : sig
 		include Set.Make(Region)
 		let none = empty
 		let (+) = union
+		let (-) = diff
 		let sum = List.fold_left union none
 		let pp x = PP.braces (PP.space_sep (List.map Region.pp (elements x)))
 		let to_string = PP.to_string % pp

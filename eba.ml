@@ -5,7 +5,12 @@ open Cmdliner
 module L = LazyList
 
 let run_checks file fileAbs :unit =
-	let run_check fd in_func =
+	let run_check_file in_file =
+		 in_file file fileAbs |> L.iter (function errmsg ->
+			Printf.printf "Potential BUG found:\n%s\n\n" errmsg
+		 )
+	in
+	let run_check_fun fd in_func =
 		 in_func fileAbs fd |> L.iter (function errmsg ->
 			Printf.printf "Potential BUG found:\n%s\n\n" errmsg
 		 )
@@ -15,13 +20,13 @@ let run_checks file fileAbs :unit =
 		| ______________ -> None
 	)
 	in
+	run_check_file CheckUninitFile.in_file;
 	fds |> List.iter (fun fd ->
 		Log.debug "Analyzing function %s\n" Cil.(fd.svar.vname);
-		run_check fd CheckFiNoret.in_func;
-		run_check fd CheckFiUninit.in_func;
-		run_check fd CheckUninitFlow1.in_func;
-		run_check fd CheckDLockFlow2.in_func;
-		run_check fd CheckBhOnIrqFlow2.in_func;
+		run_check_fun fd CheckFiNoret.in_func;
+		run_check_fun fd CheckUninitFlow1.in_func;
+		run_check_fun fd CheckDLockFlow2.in_func;
+		run_check_fun fd CheckBhOnIrqFlow2.in_func;
 	)
 
 let infer_file fn =

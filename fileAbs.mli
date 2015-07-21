@@ -16,6 +16,8 @@ val find : t -> Cil.varinfo -> entry
 
 val find_fun : t -> Cil.varinfo -> shape scheme * FunAbs.t
 
+val gvar_regions : t -> Regions.t * Effects.t
+
 val shape_of : t -> Cil.varinfo -> shape scheme
 
 val effect_of : t -> Cil.varinfo -> Effects.t

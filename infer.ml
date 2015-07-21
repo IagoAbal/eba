@@ -437,7 +437,10 @@ let rec of_lv_init env lv :Cil.init -> E.t * K.t = function
 
 
 let of_gvar env x z :Cil.init option -> E.t * K.t = function
-	| None      -> of_var_no_init x z, K.none
+	| None      ->
+		if Cil.(x.vstorage = Extern)
+		then E.none, K.none
+		else of_var_no_init x z, K.none
 	| Some init -> of_lv_init env (Cil.var x) init
 
 let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function

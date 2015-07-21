@@ -14,9 +14,10 @@ FILES[] =
     fileAbs
     infer
     pathTree
+    fileChecker
+    checkUninitFile
     fiChecker
     checkFiNoret
-    checkFiUninit
     flow1Checker
     checkUninitFlow1
     flow2Checker

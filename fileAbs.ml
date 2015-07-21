@@ -33,6 +33,14 @@ let shape_of tbl x =
 	| Var(sch,_)
 	| Fun(sch,_) -> sch
 
+let gvar_regions tbl =
+	VarMap.fold (fun _ entry (rs,fs as acc) ->
+		match entry with
+		| Var(sch,ef) ->
+			Regions.(Scheme.regions_in sch + rs), Effects.(fs + ef)
+		| Fun _       -> acc
+	) tbl (Regions.none,Effects.none)
+
 let effects_of_entry = function
 	| Var(_,ef)      -> ef
 	| Fun(sch,fnAbs) -> E.of_enum (Scheme.effects_of_fun sch)
