@@ -423,7 +423,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	(* THINK: Do we need to do anything here? CIL has this unrollType helper
 	   that should be enough...
 	 *)
-	| Cil.GType _ -> Error.not_implemented()
+	| Cil.GType _ -> env, k
 	| Cil.GCompTag _
 	| Cil.GCompTagDecl _ -> Error.not_implemented()
 	| Cil.GEnumTag _

@@ -231,6 +231,7 @@ module rec Shape : sig
 		   let effects = EffectVar.meta() in
 		   let range = of_typ res in
 		   Fun { domain; effects; range; varargs }
+		| Cil.TNamed (ti,_) -> of_typ Cil.(ti.ttype)
 		| _ ->
 			Log.error "Type not supported\n"; (* TODO: Cil.d_type ty *)
 			Error.not_implemented()
