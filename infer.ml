@@ -427,7 +427,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GCompTag _
 	| Cil.GCompTagDecl _ -> Error.not_implemented()
 	| Cil.GEnumTag _
-	| Cil.GEnumTagDecl _ -> Error.not_implemented()
+	| Cil.GEnumTagDecl _ -> env, k
 	| Cil.GVarDecl (x,_) ->
 		let xn = Cil.(x.vname) in
 		Log.debug "Variable declaration: %s\n" xn;

@@ -220,7 +220,9 @@ module rec Shape : sig
 		match ty with
 		| Cil.TVoid _
 		| Cil.TInt _
-		-> fresh()
+		(* Enumerations are treated as integers *)
+		| Cil.TEnum _ ->
+			fresh()
 		| Cil.TFloat _
 		-> Bot
 		| Cil.TPtr(ty,_)
