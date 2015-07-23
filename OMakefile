@@ -12,6 +12,7 @@ FILES[] =
     env
     funAbs
     fileAbs
+    structs
     infer
     pathTree
     fileChecker
@@ -24,7 +25,7 @@ FILES[] =
     checkDLockFlow2
     checkBhOnIrqFlow2
 
-OCAMLPACKS[] += batteries cil smart_print cmdliner dolog
+OCAMLPACKS[] += batteries cil ocamlgraph smart_print cmdliner dolog
 OCAMLFLAGS += -thread
 
 OCamlLibrary(libeba, $(FILES))

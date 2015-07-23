@@ -17,6 +17,8 @@ let comma = SP.(!^ ",")
 
 let colon = SP.(!^ ":")
 
+let semi = SP.(!^ ";")
+
 let (+) = SP.(^-^)
 
 let (++) = SP.(^^)
@@ -33,6 +35,8 @@ let braces = SP.braces
 
 let brackets = SP.brakets
 
+let angle_brackets = SP.angle_brakets
+
 let separate = SP.separate
 
 let newline_sep = separate newline
@@ -40,6 +44,8 @@ let newline_sep = separate newline
 let space_sep = separate space
 
 let comma_sep = separate comma
+
+let semi_sep = separate semi
 
 let indent = SP.indent
 

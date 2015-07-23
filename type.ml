@@ -1,6 +1,9 @@
 
 open Batteries
 
+(* THINK: Maybe encapsulate this into a Name module *)
+type name = string
+
 (* Shapes *)
 
 (* TODO: Smart constructors for shapes *)
@@ -11,6 +14,7 @@ module rec Shape : sig
 	       | Bot
 	       | Ptr of t
 	       | Fun of fun_shape
+	       | Struct of cstruct
 	       | Ref of Region.t * t
 
 	and var
@@ -30,7 +34,44 @@ module rec Shape : sig
 
 	and result = t
 
+	(* Struct typing needs to be scalable, so structs are handled
+	 * in a simple way. For each struct type we infer a parameterized
+	 * struct shape. These parameters are shape, region and effect
+	 * variables quantified over the shape of its fields. Recursive
+	 * structures are flattened in the same way as arrays, so all
+	 * the elements of a linked list are in the same memory region.
+	 * Each use of a struct type will instantiate these parameters
+	 * with specific values (here, [sargs]).
+	 *
+	 * Structs are handled basically the same way as inductive data
+	 * types in ML or Haskell. But in ML/Haskell the parameters are
+	 * given, while here we need to infer them!
+	 *
+	 * Some of the fields of the [cstruct] record are mutable in order
+	 * to "tie the knot" and build so-convenient cyclic shapes.
+	 * Ideally, these references should be "frozen" after the struct
+	 * shapes are built by [process_structs].
+	 *
+	 * OBS: The majority of interesting operations on struct shapes
+	 * can be performed simply taking their actual arguments. No need
+	 * to write complicated travesals that examine the fields.
+	 *)
+	and cstruct =
+		{         sname   : name
+		; mutable sargs   : struct_arg list
+		; mutable sparams : Var.t list
+		; mutable fields  : fields
+		}
+
+	and struct_arg = Z of t | R of Region.t | F of EffectVar.t
+
+	and fields = field list
+
+	and field = { fname : name; fshape : t }
+
 	val fv_of : t -> Vars.t
+
+	val fv_of_fields : fields -> Vars.t
 
 	val free_in : Var.t -> t -> bool
 
@@ -67,6 +108,15 @@ module rec Shape : sig
 	(** Reference shape to a given CIL type. *)
 	val ref_of : Cil.typ -> t
 
+	(** This will populate a global struct environment in Type.Shape,
+	 * which is then used by Type.Shape.of_typ.
+	 * THINK: I would like to avoid global variables when possible,
+	 * so we could either have a persistent environment based on
+	 * MapS, or introduce a functor Type.Shape.Make that will return
+	 * a Shape-ish module given a C(IL) file.
+	 *)
+	val process_structs : Cil.file -> unit
+
 	(** Shape from [varinfo]'s type. *)
 	val of_varinfo : Cil.varinfo -> t
 
@@ -76,29 +126,23 @@ module rec Shape : sig
 	val get_fun : t -> args * EffectVar.t * result
 	val get_ref_fun : t -> args * EffectVar.t * result
 
+	(** Instantiate and list the fields of a struct shape *)
+	val list_fields : cstruct -> field list
+
+	val match_struct_shape : t -> cstruct
+
+	(** Look up a field in a struct shape. *)
+	val field : cstruct -> name -> t
+
 	val vsubst_var : Var.t Subst.t -> var -> var
 
 	val vsubst : Var.t Subst.t -> t -> t
 
-	(** Fold over shapes
-	 *
-	 * Cons:
-	 * - Performance penalty (may improve with the compiler).
-	 * Pros:
-	 * - Reduce boilerplate.
-	 * - Less dependent on shapes representation.
-	 *)
-	type 'a fold = {
-		var : var -> 'a ;
-		bot : 'a ;
-		ptr : 'a -> 'a ;
-		fn  : 'a * 'a list * bool * EffectVar.t -> 'a ;
-		rf  : Region.t -> 'a -> 'a
-	}
-
-	val fold : 'a fold -> t -> 'a
+	(* THINK: Maybe re-add folds when I decide how to handle cstruct *)
 
 	val regions_in : t -> Regions.t
+
+	val fully_read : t -> Effects.t
 
 	val pp_var : var -> PP.doc
 
@@ -115,10 +159,11 @@ module rec Shape : sig
 	       | Bot
 	       | Ptr of t
 	       | Fun of fun_shape
+	       | Struct of cstruct
 	       | Ref of Region.t * t
 
 	and var = Bound of Uniq.t
-	        | Meta of Uniq.t * t Meta.t
+	        | Meta  of Uniq.t * t Meta.t
 
 	and fun_shape =
 		{ domain  : args
@@ -131,12 +176,31 @@ module rec Shape : sig
 
 	and result = t
 
+	and cstruct =
+		{         sname   : name
+		; mutable sargs   : struct_arg list
+		; mutable sparams : Var.t list
+		; mutable fields  : fields
+		}
+
+	and struct_arg = Z of t | R of Region.t | F of EffectVar.t
+
+	and fields = field list
+
+	and field = { fname : name; fshape : t }
+
+	let sarg_of_var = function
+		| Var.Shape  a -> Z (Var a)
+		| Var.Region r -> R r
+		| Var.Effect f -> F f
+
 	(** Bound variables are NOT free by definition! *)
 	let rec fv_of :t -> Vars.t = function
 		| Var a     -> fv_of_var a
 		| Bot       -> Vars.none
 		| Ptr z     -> fv_of z
 		| Fun f     -> fv_of_fun f
+		| Struct s  -> fv_of_struct s
 		| Ref (r,z) ->
 			let z_fv = fv_of z in
 			(* THINK: This pattern should be abstracted *)
@@ -163,6 +227,24 @@ module rec Shape : sig
 		if EffectVar.is_meta effects
 		then Vars.add (Var.Effect effects) ffv
 		else ffv
+
+	and fv_of_struct s = s.sargs |> List.map fv_of_sarg |> Vars.sum
+
+	(* TODO: Use Region.fv_of etc *)
+	and fv_of_sarg = function
+		| Z z -> fv_of z
+		| R r ->
+			if Region.is_meta r
+			then Vars.singleton (Var.Region r)
+			else Vars.none
+		| F f ->
+			if EffectVar.is_meta f
+			then Vars.singleton (Var.Effect f)
+			else Vars.none
+
+	and fv_of_fields fs = Vars.sum (List.map fv_of_field fs)
+
+	and fv_of_field {fshape} = fv_of fshape
 
 	let free_in a z = Vars.mem a (fv_of z)
 
@@ -205,29 +287,149 @@ module rec Shape : sig
 		| Meta(_,mz) -> Meta.write mz z
 		| Bound _    -> Error.panic_with("cannot write bound shape variable")
 
-	let rec zonk :t -> t = function
+	let rec pp = function
+		| Var x    -> pp_var x
+		| Bot      -> PP.(!^ "_|_")
+		| Ptr z    -> PP.(!^ "ptr" + space + pp z)
+		| Fun fz   -> pp_fun fz
+		| Struct s -> pp_struct s
+		| Ref(r,z) ->
+			PP.(!^ "ref" + brackets(Region.pp r) + space + pp z)
+	and pp_var a =
+		let vt_str = if is_meta a then "?" else "'" in
+		let id_pp = Uniq.pp (uniq_of a) in
+		PP.(!^ vt_str + !^ "z" + id_pp)
+	and pp_fun = fun {domain; effects; range; varargs} ->
+		let args_pp = pp_args domain varargs in
+		let res_pp = pp range in
+		let eff_pp = EffectVar.pp_lb effects in
+		let arr_pp = PP.(!^ "==" + eff_pp + !^ "==>") in
+		PP.(parens(args_pp ++ arr_pp ++ res_pp))
+	(* THINK: Should I turn it into PP.tuple ~pp ? *)
+	and pp_args args varargs =
+		let pp_varargs =
+			if varargs then PP.(comma ++ !^ "...") else PP.empty
+		in
+		PP.(parens (comma_sep (List.map pp args) + pp_varargs))
+	and pp_struct s =
+		let open PP in
+		let args_doc =
+			let pp_max_sargs = 5 in
+			let args = List.take pp_max_sargs s.sargs in
+			let ending =
+				if List.length s.sargs < pp_max_sargs
+				then []
+				else [!^ "..."]
+			in
+			comma_sep (List.map pp_sarg args @ ending)
+		in
+		!^ "struct" ++ !^ (s.sname) + angle_brackets(args_doc)
+	and pp_sarg = function
+		| Z z -> pp z
+		| R r -> Region.pp r
+		| F f -> EffectVar.pp f
+	and pp_fields fs = PP.(separate (!^ "; ") (List.map pp_field fs))
+	and pp_field {fname;fshape} = PP.(!^ fname ++ colon ++ pp fshape)
+
+	let to_string = PP.to_string % pp
+
+	let string_of_fields = PP.to_string % pp_fields
+
+	(* let string_of_sargs sas = PP.(to_string (comma_sep (List.map pp_sarg sas))) *)
+
+	(* Check the well-formedness of a shape.
+	 *
+	 * Shapes may have cycles and hence the depth of the search
+	 * is bounded.
+	 *
+	 * TODO: For now we focus on the more problematic struct shapes,
+	 * but potentially more could be done.
+	 *)
+	let rec lint_shape_aux d = function
+		| Ptr z
+		| Ref(_,z) ->
+			lint_shape_aux d z
+		| Struct s -> lint_struct_aux d s
+		| _other -> ()
+	(* Check that we "tied the knot" correctly. In essence this means
+	 * that the shapes of the fields have been generalized correctly,
+	 * and thus there must not be any free meta variable in them. *)
+	and lint_struct_aux d (s :cstruct) :unit =
+		assert(List.length s.sargs = List.length s.sparams);
+		assert(List.for_all (not % Var.is_meta) s.sparams);
+		let ffvs = fv_of_fields s.fields in
+		let valid_params = Vars.is_empty ffvs in
+		if not valid_params then begin
+			Log.error "lint_struct: %s\nfields = %s\nffvs = %s"
+				(PP.to_string (pp_struct s))
+				(PP.to_string (pp_fields s.fields))
+				(Vars.to_string ffvs)
+		end;
+		assert(valid_params);
+		if d > 1 then List.iter (lint_field_aux (d-1)) s.fields;
+	and lint_field_aux d fz = lint_shape_aux d fz.fshape
+
+	(* Check the well-formedness of a struct shape
+	 * using a reasonably small deph bound. *)
+	let lint_struct = lint_struct_aux 2
+
+	(* Maps a struct to its generalized struct shape. *)
+	type struct_memo = (name,cstruct) Hashtbl.t
+
+	(* Maps a struct to its pre-shape, needed to handle recursive
+	 * struct shapes in a variety of scenarios. *)
+	type struct_cache = (name * cstruct) list
+
+	(* Global struct memo-table.
+	 * TODO: Move into some kind of environment or make Type a functor.
+	 *)
+	let memo :struct_memo = Hashtbl.create 10
+
+	(* Instantiate a parameterized struct shape with fresh meta variables. *)
+	let inst_struct s =
+		let new_args = s.sparams |> Var.meta_of_list |> List.map sarg_of_var in
+		let s' = { s with sargs = new_args } in
+		lint_struct s';
+		s'
+
+	let rec zonk z = zonk_aux [] z
+	and zonk_aux cache :t -> t = function
 		| Var x     -> zonk_var x
 		| Bot       -> Bot
-		| Ptr z     -> Ptr (zonk z)
-		| Fun f     -> Fun (zonk_fun f)
-		| Ref (r,z) -> let r' = Region.zonk r in
-		               let z' = zonk z in
-		               Ref(r',z')
+		| Ptr z     -> Ptr (zonk_aux cache z)
+		| Fun f     -> Fun (zonk_fun_aux cache f)
+		| Struct s  -> Struct (zonk_struct_aux cache s)
+		| Ref (r,z) ->
+			let r' = Region.zonk r in
+			let z' = zonk_aux cache z in
+			Ref(r',z')
 	and zonk_var :var -> t = function
 		| Bound _ as a ->
 			Var a
 		| Meta(_,mz) as z ->
 			Option.(Meta.zonk_with zonk mz |? Var z)
-	and zonk_fun f =
-		{ domain  = zonk_dom f.domain
+	and zonk_fun_aux cache f =
+		{ domain  = zonk_dom_aux cache f.domain
 		; effects = EffectVar.zonk f.effects
-		; range   = zonk f.range
+		; range   = zonk_aux cache f.range
 		; varargs = f.varargs
 		}
-    and zonk_dom d = List.map zonk d
+	and zonk_dom_aux cache d = List.map (zonk_aux cache) d
+	and zonk_struct_aux cache s =
+		match List.Exceptionless.assoc s.sname cache with
+		| None -> { s with sargs = List.map zonk_sarg s.sargs }
+		| Some sz -> sz
+	and zonk_sarg = function
+		| Z z -> Z (zonk z)
+		| R r -> R (Region.zonk r)
+		| F f -> F (EffectVar.zonk f)
+	and zonk_fields_aux cache fs = List.map (zonk_field_aux cache) fs
+	and zonk_fields fs = zonk_fields_aux [] fs
+	and zonk_field_aux cache ({fshape} as field) =
+		{field with fshape = zonk_aux cache fshape}
 
-	(* THINK: on typesig instead ? *)
-	let rec of_typ (ty :Cil.typ) :t =
+	(* THINK: operate on typesig instead ? *)
+	let rec of_typ_cache memo cache (ty :Cil.typ) :t =
 		match ty with
 		| Cil.TVoid _
 		| Cil.TInt _
@@ -238,27 +440,124 @@ module rec Shape : sig
 		-> Bot
 		| Cil.TPtr(ty,_)
 		| Cil.TArray(ty,_,_)
-		-> Ptr (ref_of ty)
+		-> Ptr (ref_of_cache memo cache ty)
 		| Cil.TFun(res,args_opt,varargs,_) ->
 			let args = Option.(args_opt |? []) in
-			let domain = of_args args in
+			let domain = of_args memo cache args in
 			let effects = EffectVar.meta() in
-			let range = of_typ res in
+			let range = of_typ_cache memo cache res in
 			Fun { domain; effects; range; varargs }
-		| Cil.TNamed (ti,_) -> of_typ Cil.(ti.ttype)
+		| Cil.TNamed (ti,_) -> of_typ_cache memo cache Cil.(ti.ttype)
 		| Cil.TBuiltin_va_list _ ->
 			Bot
-		| _ ->
-			Log.error "Type not supported\n"; (* TODO: Cil.d_type ty *)
-			Error.not_implemented()
+		(* Struct or union (unsound) *)
+		| Cil.TComp (ci,_) -> Struct (of_struct memo cache ci)
 
-	and of_args : _ -> args = function
+	and of_args memo cache : _ -> args = function
 		| []             -> []
-		| (_,ty,_)::args -> ref_of ty :: of_args args
+		| (_,ty,_)::args -> ref_of_cache memo cache ty :: of_args memo cache args
 
-    and ref_of ty :t =
-    	let z = of_typ ty in
-    	new_ref_to z
+	and of_struct memo cache ci =
+		let open Cil in
+		let name = ci.cname in
+		begin match Hashtbl.Exceptionless.find memo name with
+		| Some s -> inst_struct s
+		| None ->
+			match List.Exceptionless.assoc name cache with
+			| None ->
+				(* THINK how to accomodate the following properly:
+				 * Sometimes you get a extern struct declaration, plus
+				 * a number of function prototypes referring to it. The
+				 * struct is never declared, but it's actually never
+				 * used, so that's OK. Here we opt for just returning
+				 * a dummy struct. See Struct module.
+				 *)
+				Log.error "of_typ: struct not found in cache: %s" name;
+				{ sname = name; sargs = []; sparams = []; fields = [] }
+				(* Error.panic_with("struct not in cache: " ^ name) *)
+			| Some z -> z
+		end
+
+	and of_fields memo cache fs :field list = List.map (of_field memo cache) fs
+
+	(* NOW we consider a struct as a single variable, where all the
+	 * fields share the same memory storage (region). For better
+	 * precision struct fields should be treated as different variables.
+	 * However this introduces some problems, for instance: is the
+	 * struct variable uninitialized after writing to one of its fields?
+	 *)
+	and of_field memo cache fi =
+		Cil.({ fname = fi.fname; fshape = of_typ_cache memo cache fi.ftype })
+
+    and ref_of_cache memo cache ty :t =
+    	let z = of_typ_cache memo cache ty in
+     	new_ref_to z
+
+	let of_typ =
+		of_typ_cache memo []
+
+	let ref_of ty =
+		let z = of_typ ty in
+		new_ref_to z
+
+	(* OBS: changes to this function shall be thought and tested properly! *)
+	let infer_structs (cis :Cil.compinfo list) =
+		(* STEP 1: Infer the shape of the struct fields while filling
+		 * any recursive occurrence with a pointer to the struct itself:
+		 * we're tying the knot!
+		 *)
+		let mk_dummy ci =
+			{ sname   = Cil.(ci.cname);
+			  sargs   = [];
+			  sparams = [];
+			  fields  = []
+			}
+		in
+		let auxs = List.map mk_dummy cis in
+		let cache = List.map (fun aux -> aux.sname,aux) auxs in
+	    List.iter2 (fun ci aux ->
+			aux.fields <- of_fields memo cache Cil.(ci.cfields);
+		) cis auxs;
+		(* STEP 2: Compute the type parameters of the structures and
+		 * set the default instance arguments.
+		 * THINK: Can we distinguish between struct declaration and instance?
+		 *)
+		let fvs =
+			auxs |> List.map (fun aux -> fv_of_fields (aux.fields)) |> Vars.sum
+		in
+		let params =
+			let ys = Vars.to_list fvs in
+			let xs = Var.bound_of_list ys in
+			List.iter2 Var.write ys xs;
+			Vars.to_list (Vars.zonk_lb (Vars.of_list xs))
+		in
+		let sargs = List.map sarg_of_var params in
+		(* STEP 3: Set all the [sparams] and [sargs] pointers appropriately,
+		 * and zonk fields shapes.
+		 *)
+		List.iter (fun aux ->
+			aux.sparams <- params;
+			aux.sargs <- sargs;
+		) auxs;
+		List.iter (fun aux ->
+			aux.fields <- zonk_fields_aux cache (aux.fields)
+		) auxs;
+		(* STEP 4: Linter pass and populate memo table.
+		 * Until all fields have been zonked we cannot guarantee coherence.
+		 *)
+		List.iter (fun aux ->
+			Log.debug "infer_structs: %s\nfields = %s"
+				(PP.to_string (pp_struct aux))
+				(PP.to_string (pp_fields aux.fields));
+			lint_struct aux;
+			Hashtbl.add memo aux.sname aux
+		) auxs
+
+	let infer_struct ci = infer_structs [ci]
+
+	let process_structs (file :Cil.file) :unit =
+		Structs.of_file file
+			|> List.iter infer_structs
 
 	let of_varinfo x = ref_of Cil.(x.vtype)
 
@@ -286,11 +585,12 @@ module rec Shape : sig
 	 *)
     let rec vsubst s : t -> t
     	= function
-    	| Var a    -> Var(vsubst_var s a)
-    	| Bot      -> Bot
-    	| Ptr z    -> Ptr (vsubst s z)
-    	| Fun fz   -> Fun (vsubst_fun s fz)
-    	| Ref(r,z) -> Ref (Region.vsubst s r,vsubst s z)
+		| Var a    -> Var(vsubst_var s a)
+		| Bot      -> Bot
+		| Ptr z    -> Ptr (vsubst s z)
+		| Fun fz   -> Fun (vsubst_fun s fz)
+		| Struct z -> Struct (vsubst_struct s z)
+		| Ref(r,z) -> Ref (Region.vsubst s r,vsubst s z)
 	and vsubst_var s a =
 		let x = Var.Shape a in
 		Var.to_shape (Subst.find_default x x s)
@@ -299,60 +599,67 @@ module rec Shape : sig
     	let f' = EffectVar.vsubst s effects in
     	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r'; varargs }
+	and vsubst_struct s z =
+		{ z with sargs = List.map (vsubst_sarg s) z.sargs }
+	and vsubst_sarg s = function
+		| Z z -> Z (vsubst s z)
+		| R r -> R (Region.vsubst s r)
+		| F f -> F (EffectVar.vsubst s f)
+	and vsubst_fields s fs = List.map (vsubst_field s) fs
+	and vsubst_field s ({fshape} as field) =
+		{field with fshape = vsubst s fshape}
 
-	type 'a fold = {
-		var : var -> 'a ;
-		bot : 'a ;
-		ptr : 'a -> 'a ;
-		fn  : 'a * 'a list * bool * EffectVar.t -> 'a ;
-		rf  : Region.t -> 'a -> 'a
-	}
-
-	let rec fold f = function
-    	| Var a    -> f.var a
-    	| Bot      -> f.bot
-    	| Ptr z    -> f.ptr (fold f z)
-    	| Fun fz   -> f.fn (fold_fun f fz)
-    	| Ref(r,z) -> f.rf r (fold f z)
-	and fold_fun f { domain; effects; range; varargs } =
-		let v_range = fold f range in
-		let v_domain = fold_args f domain in
-		v_range, v_domain, varargs, effects
-	and fold_args f args = args |> List.map (fold f)
-
-	let regions_in =
-		let f = {
-			  var = const Regions.none
-			; bot = Regions.none
-			; ptr = identity
-			; fn  = (fun (rs,rss,_,_) -> Regions.sum (rs::rss))
-			; rf  = fun r rs -> Regions.add r rs
-		} in fold f
-
-	let rec pp = function
-		| Var x    -> pp_var x
-		| Bot      -> PP.(!^ "_|_")
-		| Ptr z    -> PP.(!^ "ptr" + space + pp z)
-		| Fun fz   -> pp_fun fz
-		| Ref(r,z) -> PP.(!^ "ref" + brackets(Region.pp r) + space + pp z)
-	and pp_var a =
-		let vt_str = if is_meta a then "?" else "'" in
-		let id_pp = Uniq.pp (uniq_of a) in
-		PP.(!^ vt_str + !^ "z" + id_pp)
-	and pp_fun = fun {domain; effects; range; varargs} ->
-		let args_pp = pp_args domain varargs in
-		let res_pp = pp range in
-		let eff_pp = EffectVar.pp_lb effects in
-		let arr_pp = PP.(!^ "==" + eff_pp + !^ "==>") in
-		PP.(parens(args_pp ++ arr_pp ++ res_pp))
-	(* THINK: Should I turn it into PP.tuple ~pp ? *)
-	and pp_args args varargs =
-		let pp_varargs =
-			if varargs then PP.(comma ++ !^ "...") else PP.empty
+	let list_fields sz =
+		let xs = sz.sargs |> List.map (function
+			| Z (Var a) -> Var.Shape a
+			| Z z -> let a = meta_var() in
+					  write_var a z;
+					  Var.Shape a
+			| R r -> Var.Region r
+			| F f -> Var.Effect f
+		)
 		in
-		PP.(parens (comma_sep (List.map pp args) + pp_varargs))
+		let s = Subst.mk (List.combine sz.sparams xs) in
+		let fields' = vsubst_fields s sz.fields in
+		zonk_fields fields'
 
-	let to_string = PP.to_string % pp
+	let match_struct_shape = function
+		| Struct s -> s
+		| z        ->
+			match zonk z with
+			| Struct s  -> s
+			| _other___ -> Error.panic_with "Shape.match_struct_shape"
+
+	(* TODO: Accept inputs of type cstruct and add a match_struct helper *)
+	let field s fn =
+		try
+			let fs = list_fields s in
+			(List.find (fun f -> f.fname = fn) fs).fshape
+		with Not_found -> Error.panic_with("Shape.field")
+
+	let rec regions_in = function
+		| Var _
+		| Bot      -> Regions.none
+		| Ptr z    -> regions_in z
+		| Fun fz   -> regions_in_fun fz
+		| Struct s -> regions_in_struct s
+		| Ref(r,z) -> Regions.add r (regions_in z)
+	and regions_in_fun = fun {domain; range} ->
+	    Regions.(regions_in_args domain + regions_in range)
+	(* THINK: Should I turn it into PP.tuple ~pp ? *)
+	and regions_in_args args = args |> List.map regions_in |> Regions.sum
+	and regions_in_struct s =
+		s.sargs |> List.map regions_in_sarg |> Regions.sum
+	and regions_in_sarg = function
+		| Z z -> regions_in z
+		| R r -> Regions.singleton r
+		| F _ -> Regions.none
+
+	let fully_read z = z
+		|> regions_in
+		|> Regions.enum
+		|> Enum.map Effects.(fun r -> just (reads r))
+		|> Effects.(Enum.fold (+) none)
 
     end
 
@@ -411,7 +718,7 @@ end = struct
 		let mr = Meta.fresh() in
 		Meta(id,mr)
 
-	(* THINK: just use =~ ? *)
+	(** Here r2 may be a bound region. *)
 	let write r1 r2 =
 		match r1 with
 		| Bound _    -> Error.panic_with("write: not a meta-region")
@@ -430,6 +737,7 @@ end = struct
 
 	(* TODO: Refactor code in Meta *)
 	let rec (=~) r1 r2 :unit =
+		assert(is_meta r2);
 		if equals r1 r2
 		then ()
 		else
@@ -719,8 +1027,8 @@ and Effects : sig
 
 	val just : e -> t
 
-	(** Read all memory regions of a given shape. *)
-	val fully_read : Shape.t -> t
+	(* (\** Read all memory regions of a given shape. *\) *)
+	(* val fully_read : Shape.t -> t *)
 
 	(** Weaken the certaint of the effects. *)
 	val weaken : t -> t
@@ -732,6 +1040,8 @@ and Effects : sig
 	val (+.) : t -> e -> t
 
 	val (+) : t -> t -> t
+
+	val sum : t list -> t
 
 	val filter : (e -> bool) -> t -> t
 
@@ -898,17 +1208,7 @@ and Effects : sig
 		; must = EffectSet.union fs1.must fs2.must
 		}
 
-	let fully_read z =
-		let open Shape in
-		let f = {
-			var = const none ;
-			bot = none ;
-			ptr = identity ;
-			rf  = (fun r v -> v +. reads r) ;
-			fn  = const none
-		}
-		in
-		fold f z
+	let sum = List.fold_left (+) none
 
 	let filter pred fs = {
 		  may  = EffectSet.filter pred fs.may
@@ -942,6 +1242,24 @@ and Effects : sig
 		Enum.append mays musts
 
 	let enum_may fs = EffectSet.enum fs.may
+
+	(* let fully_read z = *)
+	(* 	let open Shape in *)
+	(* 	let f = { *)
+	(* 		var = const none ; *)
+	(* 		bot = none ; *)
+	(* 		ptr = identity ; *)
+	(* 		rf  = (fun r v -> v +. reads r) ; *)
+	(* 		str = (fun (_,xs,_,_) -> xs *)
+	(* 					  |> List.enum *)
+	(* 					  |> Enum.filter_map Var.region_from *)
+	(* 					  |> Enum.map (fun r -> must (reads r)) *)
+	(* 					  |> of_enum *)
+	(* 		); *)
+	(* 		fn  = const none *)
+	(* 	} *)
+	(* 	in *)
+	(* 	fold f z *)
 
 	let fv_of fs =
 		let ff = fs |> enum_may |> List.of_enum in
@@ -1126,9 +1444,14 @@ and Var : sig
 
 	val to_region : t -> Region.t
 
+	(* TODO: clean up mess: is_region, to_region, region_from ... *)
+	val region_from : t -> Region.t option
+
 	val uniq_of : t -> Uniq.t
 
 	val compare : t -> t -> int
+
+	val is_meta : t -> bool
 
 	val meta_of : t -> t
 
@@ -1137,6 +1460,8 @@ and Var : sig
 	val bound_of_list : t list -> t list
 
 	val write : t -> t -> unit
+
+	val vsubst : t Subst.t -> t -> t
 
 	val zonk_lb : t -> t
 
@@ -1177,6 +1502,10 @@ and Var : sig
 		| Region r -> r
 		| ________ -> Error.panic()
 
+	let region_from = function
+		| Region r -> Some r
+		| ________ -> None
+
 	let is_meta = function
 		| Shape a  -> Shape.is_meta a
 		| Effect f -> EffectVar.is_meta f
@@ -1199,6 +1528,11 @@ and Var : sig
 	let bound_of_list :t list -> t list =
     	List.map bound_of
 
+	let is_meta = function
+		| Shape z  -> Shape.is_meta z
+		| Region r -> Region.is_meta r
+		| Effect f -> EffectVar.is_meta f
+
 	let meta_of :t -> t = function
 		| Shape _  -> Shape(Shape.meta_var())
 		| Region _ -> Region(Region.meta())
@@ -1216,6 +1550,11 @@ and Var : sig
 		| (Effect f,Effect g) -> EffectVar.write f g
 		| (Region r,Region s) -> Region.write r s
 		| __other__           -> Error.panic_with("write: incompatible types")
+
+	let vsubst s = function
+		| Shape a  -> Shape(Shape.vsubst_var s a)
+		| Region r -> Region(Region.vsubst s r)
+		| Effect f -> Effect(EffectVar.vsubst s f)
 
 	(* TODO: refactor into a Var.map function *)
 	let zonk_lb = function
@@ -1339,11 +1678,12 @@ end = struct
 			let mtvs = Var.meta_of_list qvs in
 			let s = Subst.mk (List.combine qvs mtvs) in
 			let shp' = Shape.vsubst s shp in
+			assert(Vars.for_all Var.is_meta (Shape.fv_of shp'));
 			let k = Vars.filter Var.is_effect (Shape.fv_of shp') in
 			shp', k
 
 	(* THINK: [let xs = Vars.map f vs] to avoid intermediate lists *)
-	let quantify vs z : Shape.t t =
+	let quantify vs z =
 		let ys = Vars.to_list vs in
 		let xs = Var.bound_of_list ys in
 		(* write into vs's *)
@@ -1390,7 +1730,7 @@ type 'a scheme = 'a Scheme.t
 
 
 (* Unification *)
-
+(* TODO: Move this to Shape *)
 module Unify =
 	struct
 
@@ -1422,6 +1762,10 @@ module Unify =
 		-> x =~ y
 		| (Fun f1,Fun f2)
 		-> unify_fun f1 f2
+		| (Struct s1,Struct s2) ->
+			if s1.sname = s2.sname
+			then unify_structs s1 s2
+			else unify_fields(Shape.list_fields s1,Shape.list_fields s2)
 		| (Ref(r,x),Ref(s,y))
 		-> Region.(r =~ s);
 		   x =~ y
@@ -1444,6 +1788,29 @@ module Unify =
     	unify_dom dom1 dom2;
     	EffectVar.(ef1 =~ ef2);
     	res1 =~ res2
+
+	and unify_structs s1 s2 =
+		assert(s1.sname = s2.sname);
+		List.iter2 unify_sarg s1.sargs s2.sargs
+
+	and unify_sarg a1 a2 =
+		match (a1,a2) with
+		| (Z z1,Z z2) ->
+			Log.debug "unify_sarg: %s ~ %s" (to_string z1) (to_string z2);
+			z1 =~ z2
+		| (R r1,R r2) -> Region.(r1 =~ r2)
+		| (F f1,F f2) -> EffectVar.(f1 =~ f2)
+		| _other -> Error.panic()
+
+	and unify_fields = function
+		(* TODO: Unless ([],[]) we should mark the cast as unsafe *)
+		| ([],_)
+		| (_,[]) -> ok
+		| (f1::fs1,f2::fs2) ->
+			unify_field f1 f2;
+			unify_fields(fs1,fs2)
+
+	and unify_field f1 f2 = f1.fshape =~ f2.fshape
 
 	and unify_var a z =
 		assert (Shape.is_meta a);

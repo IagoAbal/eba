@@ -165,7 +165,13 @@ and with_offset (env: Env.t) (z :shape)
 		let z3, f1, k1 = with_offset env z2 off in
 		z3, Effects.(f0 + f1 +. reads r), K.(k0+k1)
 	(* record field *)
-	| Cil.Field _ -> Error.not_implemented()
+	| Cil.Field (fi,off) ->
+		(* overall: z ~ ref struct { ...; f : zf; ... } *)
+ 		let r, z1 = Unify.match_ref_shape z in
+		let zs = Shape.match_struct_shape z1 in
+		let zf = Shape.field zs Cil.(fi.fname) in
+		let z2 = Ref(r,zf) in
+		with_offset env z2 off
 
 and of_lhost (env :Env.t)
 	: Cil.lhost -> shape * Effects.t * K.t
@@ -426,9 +432,9 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	(* THINK: Do we need to do anything here? CIL has this unrollType helper
 	   that should be enough...
 	 *)
-	| Cil.GType _ -> env, k
+	| Cil.GType _
+	| Cil.GCompTagDecl _
 	| Cil.GCompTag _
-	| Cil.GCompTagDecl _ -> Error.not_implemented()
 	| Cil.GEnumTag _
 	| Cil.GEnumTagDecl _ -> env, k
 	| Cil.GVarDecl (x,_) ->
@@ -469,6 +475,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 
 (* TODO: globinit ? *)
 let of_file (file : Cil.file) :FileAbs.t =
+	process_structs file;
 	(* TODO: Here we can read axioms *)
 	let no_globals = List.length Cil.(file.globals) in
 	let fileAbs = FileAbs.create ~no_globals in
