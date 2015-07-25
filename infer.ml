@@ -181,7 +181,8 @@ and with_offset (env: Env.t) (z :shape)
 		let r, z1 = Unify.match_ref_shape z in
 		(* z = ref ptr z2 *)
 		let z2 = Unify.match_ptr_shape z1 in
-		z2, Effects.(f0 +. reads r), k0
+		let z3, f1, k1 = with_offset env z2 off in
+		z3, Effects.(f0 + f1 +. reads r), K.(k0+k1)
 	(* record field *)
 	| Cil.Field _ -> Error.not_implemented()
 
