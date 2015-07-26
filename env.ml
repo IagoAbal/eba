@@ -79,10 +79,11 @@ let fv_of env :Vars.t =
 		Vars.union (Shape.fv_of shp)
 	) env Vars.empty
 
-let pp =
-	let pp_binding (x,sch) =
-		PP.(!^ Cil.(x.vname) ++ colon ++ Shape.pp Scheme.(sch.body))
-	in
-	PP.(separate newline % List.map pp_binding % VarMap.bindings)
+let print_binding out (x,sch) =
+	Printf.fprintf out "%s : %s" Cil.(x.vname) Scheme.(to_string sch)
 
-let to_string = PP.to_string % pp
+let fprint out = List.iter (print_binding out) % VarMap.bindings
+
+let print = fprint IO.stdout
+
+let eprint = fprint IO.stderr

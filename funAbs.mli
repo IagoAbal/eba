@@ -1,6 +1,8 @@
 
 (* TODO: Create immutable wrapper *)
 
+open Batteries
+
 open Type
 
 (** Mapping of variables to shapes, and locations to effects.
@@ -37,6 +39,10 @@ val uninit_locals : t -> Cil.fundec -> Regions.t
 (* TODO: This should be precomputed for an immutable FunAbs.t *)
 val sum : t -> Effects.t
 
-val pp : t -> PP.doc
+(** Print to stdout *)
+val print : t -> unit
 
-val to_string : t -> string
+(** Print to stderr *)
+val eprint : t -> unit
+
+val fprint : unit IO.output -> t -> unit

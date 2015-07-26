@@ -67,27 +67,29 @@ let finalize_entry = function
 
 let finalize = VarMap.map_inplace (fun _ -> finalize_entry)
 
-(* THINK: mostly duplicated from Env.pp, refactor? export Env.pp_binding? *)
-let pp_var_entry x sch ef :Cil.location * PP.doc =
-	let loc = Cil.(x.vdecl) in
-	let n = Cil.(x.vname) in
-	loc, PP.(!^ (Utils.cyan n) ++ colon ++ Shape.pp Scheme.(sch.body) ++ !^ "&" ++ Effects.pp ef)
+let print_var out x s f =
+	let loc = Utils.Location.to_string Cil.(x.vdecl) in
+	let name = Utils.cyan Cil.(x.vname) in
+	let shp = Shape.to_string Scheme.(s.body) in
+	let eff = Effects.to_string f in
+	Printf.fprintf out "\n%s: %s : %s & %s\n" loc name shp eff
 
-let pp_fun_entry fx sch fnAbs :Cil.location * PP.doc =
-	let loc = Cil.(fx.vdecl) in
-	let fn = Cil.(fx.vname) in
-	let fun_pp = PP.(
-		!^ (Utils.cyan fn) ++ colon ++ Shape.pp Scheme.(sch.body)
-		+ newline
-		+ PP.indent (FunAbs.pp fnAbs)
-	) in
-	loc, fun_pp
+let print_fun out f s fnAbs =
+	let loc = Utils.Location.to_string Cil.(f.vdecl) in
+	let fn = Utils.cyan Cil.(f.vname) in
+	let sch = Scheme.to_string s in
+	Printf.fprintf out "\n%s: %s : %s\n" loc fn sch;
+	FunAbs.fprint out fnAbs
 
-let pp_entry = function
-	| (x,Var(sch,ef))     -> pp_var_entry x sch ef
-	| (fx,Fun(sch,fnAbs)) -> pp_fun_entry fx sch fnAbs
+let print_entry out = function
+	| (x,Var(sch,ef))     -> print_var out x sch ef
+	| (fx,Fun(sch,fnAbs)) -> print_fun out fx sch fnAbs
 
-let pp = Utils.Location.pp_with_loc %
-	List.map pp_entry % List.of_enum % VarMap.enum
+let fprint out tbl = tbl
+	|> List.of_enum % VarMap.enum
+	|> List.sort Utils.(compare_on_first Varinfo.loc_of)
+	|> List.iter (print_entry out)
 
-let to_string = PP.to_string % pp
+let print = fprint stdout
+
+let eprint = fprint stderr

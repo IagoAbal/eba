@@ -84,26 +84,33 @@ let aliased _ _ = Error.not_implemented()
 
 let points_to _ _ = Error.not_implemented()
 
-let pp_vars =
-	(* THINK: mostly duplicated from Env.pp, refactor? *)
-	let pp_binding (x,sch) =
-		let loc = Cil.(x.vdecl) in
-		let n = Utils.cyan (Cil.(x.vname)) in
-		loc, PP.(!^ n ++ colon ++ Shape.pp Scheme.(sch.body))
-	in
-	Utils.Location.pp_with_loc %
-		PP.(List.map pp_binding % List.of_enum % VarMap.enum)
+let print_var out (x,sch) =
+	let loc = Utils.Location.to_string Cil.(x.vdecl) in
+	let name = Utils.cyan (Cil.(x.vname)) in
+	let shp = Shape.to_string Scheme.(sch.body) in
+	Printf.fprintf out "%s: %s : %s\n" loc name shp
 
-let pp_locs =
-	let pp_binding (l,f) =
-		l, PP.(space + !^ "->" ++ Effects.pp f)
-	in
-	Utils.Location.pp_with_loc %
-		PP.(List.map pp_binding % List.of_enum % LocMap.enum)
+let print_vars out tbl = tbl.vars
+		 |> VarMap.enum
+		 |> List.of_enum
+		 |> List.sort Utils.(compare_on_first Varinfo.loc_of)
+		 |> List.iter (print_var out)
 
-let pp tbl =
-	let vars_doc = pp_vars tbl.vars in
-	let locs_doc = pp_locs tbl.locs in
-	PP.(vars_doc + newline + locs_doc)
+let print_step out (l,f) =
+	let loc = Utils.Location.to_string l in
+	let ef = Effects.to_string f in
+	Printf.fprintf out "%s -> %s\n" loc ef
 
-let to_string = PP.to_string % pp
+let print_steps out tbl = tbl.locs
+		 |> LocMap.enum
+		 |> List.of_enum
+		 |> List.sort Utils.compare_first
+		 |> List.iter (print_step out)
+
+let fprint out tbl =
+	print_vars out tbl;
+	print_steps out tbl
+
+let print = fprint IO.stdout
+
+let eprint = fprint IO.stderr

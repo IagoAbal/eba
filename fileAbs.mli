@@ -1,4 +1,6 @@
 
+open Batteries
+
 open Type
 
 type t
@@ -26,6 +28,10 @@ val sum : t -> Effects.t
 
 val finalize : t -> unit
 
-val pp : t -> PP.doc
+(** Print to stdout *)
+val print : t -> unit
 
-val to_string : t -> string
+(** Print to stderr *)
+val eprint : t -> unit
+
+val fprint : unit IO.output -> t -> unit

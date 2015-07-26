@@ -474,12 +474,18 @@ let of_file (file : Cil.file) :FileAbs.t =
 	let fileAbs = FileAbs.create ~no_globals in
 	let env0 = Env.empty in
 	let k0 = K.none in
-	let env1, _ = List.fold_left
+	let _env1, _ = List.fold_left
 		(fun (env,k) gbl ->	of_global fileAbs env k gbl)
 		(env0,k0)
 		Cil.(file.globals)
 	in
-	Log.debug "Env:\n %s\n" (Env.to_string (Env.zonk env1));
 	FileAbs.finalize fileAbs;
-	Log.info "FileAbs:\n%s\n" (FileAbs.to_string fileAbs);
+	if Log.get_log_level () >= Log.INFO
+	then begin
+		Printf.eprintf "\n========== BEGIN %s: effect abstraction ==========\n"
+			Cil.(file.fileName);
+		FileAbs.eprint fileAbs;
+		Printf.eprintf "\n==========  END  %s: effect abstraction ==========\n\n"
+			Cil.(file.fileName);
+	end;
 	fileAbs

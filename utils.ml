@@ -3,6 +3,10 @@ open Batteries
 
 let compare_on f x y = Pervasives.compare (f x) (f y)
 
+let compare_first (x,_) (y,_) = Pervasives.compare x y
+
+let compare_on_first f (x,_) (y,_) = Pervasives.compare (f x) (f y)
+
 let equal_on f x y = (f x) = (f y)
 
 let instr_same_loc = equal_on Cil.get_instrLoc
@@ -20,15 +24,19 @@ let cyan = colored "0;36"
 module Varinfo =
 struct
 
-	type t = Cil.varinfo
+	open Cil
 
-	let vid x = Cil.(x.vid)
+	type t = varinfo
 
-	let compare x y = Pervasives.compare (vid x) (vid y)
+	let vid x = x.vid
+
+	let compare x y = Pervasives.compare x.vid y.vid
 
 	let equal x y = compare x y = 0
 
 	let hash = Hashtbl.hash
+
+	let loc_of x = x.vdecl
 
 end
 

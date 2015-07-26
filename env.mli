@@ -1,4 +1,6 @@
 
+open Batteries
+
 open Type
 
 (** A map from CIL variables to shape schemes *)
@@ -37,6 +39,10 @@ val zonk : t -> t
 
 val fv_of : t -> Vars.t
 
-val pp : t -> PP.doc
+(** Print to stdout *)
+val print : t -> unit
 
-val to_string : t -> string
+(** Print to stderr *)
+val eprint : t -> unit
+
+val fprint : unit IO.output -> t -> unit
