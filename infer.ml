@@ -408,16 +408,22 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	let sch, k3 = generalize_fun (Env.remove fn env) k2 f_r shp'' fnAbs in
 	sch, k3, fnAbs
 
-let of_gvar_init env x :Cil.init -> E.t * K.t = function
+let rec of_lv_init env lv :Cil.init -> E.t * K.t = function
 	| Cil.SingleInit e ->
 		let ze, fe, ke = of_exp env e in
-		let f1, k1 = with_lval_set env ze fe ke (Cil.var x) in
+		let f1, k1 = with_lval_set env ze fe ke lv in
 		f1, k1
-	| Cil.CompoundInit _ -> Error.not_implemented()
+	| Cil.CompoundInit(_,ii) ->
+		List.fold_left (fun (f,k) (offset,init) ->
+			let lv' = Cil.addOffsetLval offset lv in
+			let f1, k1  = of_lv_init env lv' init in
+			E.(f1 + f), K.(k1 + k)
+		) (E.none, K.none) ii
+
 
 let of_gvar env x z :Cil.init option -> E.t * K.t = function
 	| None      -> of_var_no_init x z, K.none
-	| Some init -> of_gvar_init env x init
+	| Some init -> of_lv_init env (Cil.var x) init
 
 let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
 	(* THINK: Do we need to do anything here? CIL has this unrollType helper
