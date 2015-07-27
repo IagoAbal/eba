@@ -102,6 +102,8 @@ module rec Shape : sig
 
 	val pp_var : var -> PP.doc
 
+	val pp_fun : fun_shape -> PP.doc
+
 	val pp : t -> PP.doc
 
 	val to_string : t -> string
@@ -228,11 +230,12 @@ module rec Shape : sig
 		| Cil.TPtr(ty,_)
 		| Cil.TArray(ty,_,_)
 		-> Ptr (ref_of ty)
-		| Cil.TFun(res,Some args,varargs,_)
-		-> let domain = of_args args in
-		   let effects = EffectVar.meta() in
-		   let range = of_typ res in
-		   Fun { domain; effects; range; varargs }
+		| Cil.TFun(res,args_opt,varargs,_) ->
+			let args = Option.(args_opt |? []) in
+			let domain = of_args args in
+			let effects = EffectVar.meta() in
+			let range = of_typ res in
+			Fun { domain; effects; range; varargs }
 		| Cil.TNamed (ti,_) -> of_typ Cil.(ti.ttype)
 		| _ ->
 			Log.error "Type not supported\n"; (* TODO: Cil.d_type ty *)
@@ -1320,7 +1323,13 @@ module Unify =
     and unify_fun f1 f2 =
     	let unify_dom d1 d2 =
     		try List.iter2 (=~) d1 d2
-    		with Invalid_argument _ -> Error.panic()
+    		with Invalid_argument _ ->
+				(* Oops unsound. Doing anything more complex than this is probably not worth
+				 * the effort. Passing more arguments than required is already supported anyways.
+				 *)
+				Log.error "Couldn't unify function types with different number of arguments %s ~ %s"
+					(PP.to_string (Shape.pp_fun f1)) (PP.to_string (Shape.pp_fun f2));
+				()
     	in
     	let { domain = dom1; effects = ef1; range = res1 } = f1 in
     	let { domain = dom2; effects = ef2; range = res2 } = f2 in
