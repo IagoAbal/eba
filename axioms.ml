@@ -42,7 +42,7 @@ let assert_fail :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("__assert_fail", {vars; body})
+	Axiom("__assert_fail", Scheme.({vars; body}))
 
 let malloc :axiom =
 	let r0 = Region.meta() in
@@ -65,7 +65,7 @@ let malloc :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("malloc", {vars; body})
+	Axiom("malloc", Scheme.({vars; body}))
 
 let free :axiom =
 	let r0 = Region.meta() in
@@ -88,7 +88,7 @@ let free :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("free", {vars; body})
+	Axiom("free", Scheme.({vars; body}))
 
 let memcpy :axiom =
 	let r0 = Region.meta() in
@@ -116,7 +116,7 @@ let memcpy :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("memcpy", {vars; body})
+	Axiom("memcpy", Scheme.({vars; body}))
 
 let spin_lock :axiom =
 	let r0 = Region.meta() in
@@ -138,7 +138,7 @@ let spin_lock :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("spin_lock", {vars; body})
+	Axiom("spin_lock", Scheme.({vars; body}))
 
 let spin_unlock :axiom =
 	let r0 = Region.meta() in
@@ -160,7 +160,7 @@ let spin_unlock :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("spin_unlock", {vars; body})
+	Axiom("spin_unlock", Scheme.({vars; body}))
 
 let spin_lock_irq :axiom =
 	let r0 = Region.meta() in
@@ -185,7 +185,7 @@ let spin_lock_irq :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("spin_lock_irq", {vars; body})
+	Axiom("spin_lock_irq", Scheme.({vars; body}))
 
 let spin_unlock_irq :axiom =
 	let r0 = Region.meta() in
@@ -210,7 +210,7 @@ let spin_unlock_irq :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("spin_unlock_irq", {vars; body})
+	Axiom("spin_unlock_irq", Scheme.({vars; body}))
 
 let local_bh_enable :axiom =
 	let r0 = Region.meta() in
@@ -224,7 +224,7 @@ let local_bh_enable :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("local_bh_enable", {vars; body})
+	Axiom("local_bh_enable", Scheme.({vars; body}))
 
 let local_bh_disable :axiom =
 	let r0 = Region.meta() in
@@ -238,7 +238,7 @@ let local_bh_disable :axiom =
 		; varargs = false
 	}))
 	in
-	Axiom("local_bh_disable", {vars; body})
+	Axiom("local_bh_disable", Scheme.({vars; body}))
 
 (* Axiom table *)
 

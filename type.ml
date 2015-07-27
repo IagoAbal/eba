@@ -1270,6 +1270,96 @@ and Subst : sig
 
 	end
 
+(* Subeffecting Constraints *)
+
+and Constraints : sig
+	type t = Vars.t
+	val none : t
+	val add : EffectVar.t -> Effects.t -> t -> t
+	val (+) : t -> t -> t
+	val minus : t -> t -> t
+	val cardinal : t -> int
+	end =
+	struct
+
+	type elt = EffectVar.t
+
+    type t = Vars.t
+
+    let none :t = Vars.none
+
+    let add x f k =
+		let _ = EffectVar.add_lb (Effects.remove (Effects.Var x) f) x in
+		Vars.add (Var.Effect x) k
+
+    let (+) = Vars.(+)
+
+    let minus = Vars.diff
+
+	let cardinal = Vars.cardinal
+
+	end
+
+and Scheme : sig
+	type 'a t = { vars : Vars.t; body : 'a }
+	val instantiate : Shape.t t -> Shape.t * Constraints.t
+	val quantify : Vars.t -> Shape.t -> Shape.t t
+	val ref_of : Region.t -> Shape.t t -> Shape.t t
+	val regions_in : Shape.t t -> Regions.t
+	val of_shape : Shape.t -> Shape.t t
+	val of_varinfo : Cil.varinfo -> Shape.t t
+	(* TODO: Should return Effects.t *)
+	val effects_of_fun : Shape.t t -> Effects.e Effects.certainty Enum.t
+	val fresh_binding : Cil.varinfo -> Cil.varinfo * Shape.t t
+	val fresh_bindings : Cil.varinfo list -> (Cil.varinfo * Shape.t t) list
+	val fv_of : Shape.t t -> Vars.t
+	val zonk : Shape.t t -> Shape.t t
+	val pp : Shape.t t -> PP.doc
+	val to_string : Shape.t t -> string
+end = struct
+
+	type 'a t = { vars : Vars.t; body : 'a }
+
+	let instantiate :Shape.t t -> Shape.t * Constraints.t =
+		fun { vars; body = shp} ->
+			let qvs = Vars.to_list vars in
+			let mtvs = Var.meta_of_list qvs in
+			let s = Subst.mk (List.combine qvs mtvs) in
+			let shp' = Shape.vsubst s shp in
+			let k = Vars.filter Var.is_effect (Shape.fv_of shp') in
+			shp', k
+
+	(* THINK: [let xs = Vars.map f vs] to avoid intermediate lists *)
+	let quantify vs z : Shape.t t =
+		let ys = Vars.to_list vs in
+		let xs = Var.bound_of_list ys in
+		(* write into vs's *)
+		List.iter2 Var.write ys xs;
+		let xs' = Vars.zonk_lb (Vars.of_list xs) in
+		let z' = Shape.zonk z in
+		{ vars = xs'; body = z' }
+
+	let ref_of r sch =
+		{ sch with body = Shape.Ref(r,sch.body) }
+
+	let regions_in sch = Shape.regions_in sch.body
+	let of_shape z = { vars = Vars.none; body = z }
+	let of_varinfo x = of_shape (Shape.of_varinfo x)
+	let effects_of_fun sch =
+		let _,f,_ = Shape.get_ref_fun sch.body in
+		Effects.enum_principal (EffectVar.lb_of f)
+	let fresh_binding x = x, of_varinfo x
+	let fresh_bindings = List.map fresh_binding
+	let fv_of sch = Shape.fv_of sch.body
+	(* THINK: also Vars.zonk_lb ? *)
+	let zonk sch = { sch with body = Shape.zonk sch.body }
+
+	let pp {vars; body} =
+		PP.(!^ "forall" ++ Vars.pp vars + !^ "." ++ Shape.pp body)
+
+	let to_string = PP.to_string % pp
+end
+
 module E = Effects
 
 module type FVable = sig
@@ -1277,43 +1367,14 @@ module type FVable = sig
 	val fv_of : t -> Vars.t
 end
 
+module K = Constraints
+
 type shape = Shape.t
 type effects = Effects.t
 type var = Var.t
 type region = Region.t
+type 'a scheme = 'a Scheme.t
 
-(* Could remove scheme, since this is rank-1 polymorphism,
-   we could just put "Bound"s and assume they are implicitly quantified. ?
-   BUT they also appear in the constraints... and we need to subsitute there.
- *)
-type 'a scheme =
-		{ vars : Vars.t
-		; body : 'a
-		}
-
-module Scheme : sig
-	val regions_in : shape scheme -> Regions.t
-	val of_shape : shape -> shape scheme
-	val of_varinfo : Cil.varinfo -> shape scheme
-	(* TODO: Should return Effects.t *)
-	val effects_of_fun : shape scheme -> E.e E.certainty Enum.t
-	val fresh_binding : Cil.varinfo -> Cil.varinfo * shape scheme
-	val fresh_bindings : Cil.varinfo list -> (Cil.varinfo * shape scheme) list
-	val fv_of : shape scheme -> Vars.t
-	val zonk : shape scheme -> shape scheme
-end = struct
-	let regions_in sch = Shape.regions_in sch.body
-	let of_shape z = { vars = Vars.none; body = z }
-	let of_varinfo x = of_shape (Shape.of_varinfo x)
-	let effects_of_fun sch =
-		let _,f,_ = Shape.get_ref_fun sch.body in
-		E.enum_principal (EffectVar.lb_of f)
-	let fresh_binding x = x, of_varinfo x
-	let fresh_bindings = List.map fresh_binding
-	let fv_of sch = Shape.fv_of sch.body
-	(* THINK: also Vars.zonk_lb ? *)
-	let zonk sch = { sch with body = Shape.zonk sch.body }
-end
 
 (* Unification *)
 
@@ -1419,28 +1480,3 @@ module Unify =
     	with Cannot_unify _ -> z2 (* Oops, unsafe analysis... *)
 
 	end
-
-(* Subeffecting Constraints *)
-
-module Constraints =
-	struct
-
-	type elt = EffectVar.t
-
-    type t = Vars.t
-
-    let none :t = Vars.none
-
-    let add x f k =
-		let _ = EffectVar.add_lb (Effects.remove (Effects.Var x) f) x in
-		Vars.add (Var.Effect x) k
-
-    let (+) = Vars.(+)
-
-    let minus = Vars.diff
-
-	let cardinal = Vars.cardinal
-
-	end
-
-module K = Constraints

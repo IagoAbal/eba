@@ -89,7 +89,7 @@ let pp_vars =
 	let pp_binding (x,sch) =
 		let loc = Cil.(x.vdecl) in
 		let n = Utils.cyan (Cil.(x.vname)) in
-		loc, PP.(!^ n ++ colon ++ Shape.pp sch.body)
+		loc, PP.(!^ n ++ colon ++ Shape.pp Scheme.(sch.body))
 	in
 	Utils.Location.pp_with_loc %
 		PP.(List.map pp_binding % List.of_enum % VarMap.enum)

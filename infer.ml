@@ -17,27 +17,6 @@ open Shape
 	this would not be sound, we also impose the value restriction.
  *)
 
-let instantiate :shape scheme -> shape * K.t =
-	fun { vars; body = shp} ->
-	let qvs = Vars.to_list vars in
-	let mtvs = Var.meta_of_list qvs in
-	let s = Subst.mk (List.combine qvs mtvs) in
-	let shp' = Shape.vsubst s shp in
-	let k = Vars.filter Var.is_effect (fv_of shp') in
-	shp', k
-
-(* THINK: move this into type because it knows a lot about the internals *)
-(* If we generalize meta-type variables we could just write the meta variables and then zonk, instead of substitution. *)
-let quantify (r :Region.t) (vs :Vars.t) (z :shape)
-	: shape scheme =
-	let ys = Vars.to_list vs in
-	let xs = Var.bound_of_list ys in
-	(* write into vs's *)
-	List.iter2 Var.write ys xs;
-	let xs' = Vars.zonk_lb (Vars.of_list xs) in
-	let z' = Shape.zonk z in
-	{ vars = xs'; body = Shape.Ref(r,z') }
-
 (* generalize functions shapes *)
 let generalize_fun env k r z fnAbs
 	: shape scheme * K.t =
@@ -50,7 +29,7 @@ let generalize_fun env k r z fnAbs
 	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs = Vars.diff fd_fv env_fv in
 	let k1 = K.minus k vs in
-	let sch = quantify rr vs zz in
+	let sch = Scheme.(ref_of rr (quantify vs zz)) in
 	FunAbs.zonk fnAbs;
 	sch, k1
 
@@ -193,7 +172,7 @@ and of_lhost (env :Env.t)
 	= function
 	| Cil.Var x ->
 		let sch = Env.find x env in
-		let z, k = instantiate sch in
+		let z, k = Scheme.instantiate sch in
 		(* assert (is_ref_shape z) ? *)
 		z, Effects.none, k
 	| Cil.Mem e ->
@@ -378,7 +357,7 @@ let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
 	let locals_bs = Scheme.fresh_bindings locals in
 	FunAbs.add_vars fnAbs locals_bs;
 	let ef = List.fold_left (fun ef (x,sch) ->
-		let xf = of_var_no_init x sch.body in
+		let xf = of_var_no_init x Scheme.(sch.body) in
 		(* THINK: The implicit effects of local declarations may
 		   better be cached in a different way than regular
 		   statement effects. *)
@@ -396,7 +375,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		: shape scheme * K.t * FunAbs.t =
 	let fnAbs = FunAbs.create () in
 	let fn = Cil.(fd.svar) in
-	let shp' = (Env.find fn env).body in (* TODO: should it be instantiated? *)
+	let shp' = Scheme.((Env.find fn env).body) in (* TODO: should it be instantiated? *)
 	let f_r, shp'' = Unify.match_ref_shape shp' in
 	let z_args,f,z_res  = Shape.get_fun shp'' in
 	let args_bs = List.map2 (fun x y -> x, Scheme.of_shape y)
@@ -461,10 +440,11 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GVar (x,ii,_) ->
 		let xn = Cil.(x.vname) in
 		let env' = Env.fresh_if_absent x env in
-		Log.debug "Global variable %s : %s\n" xn (Shape.to_string (Env.find x env').body);
+		Log.debug "Global variable %s : %s\n"
+			xn Scheme.(to_string (Env.find x env'));
 		(* THINK: move to of_init *)
 		let sch_x = Env.find x env' in
-		let ef, ki = of_gvar env' x sch_x.body Cil.(ii.init) in
+		let ef, ki = of_gvar env' x Scheme.(sch_x.body) Cil.(ii.init) in
 		FileAbs.add_var fileAbs x sch_x ef;
 		env', K.(k + ki)
 	| Cil.GFun (fd,_) ->
@@ -474,7 +454,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 		let env' = Env.fresh_if_absent fn env in
 		(* infer *)
 		let sch, k1, fnAbs = of_fundec env' k fd in
-		Log.info "Function %s : %s\n" Cil.(fn.vname) (Shape.to_string sch.body);
+		Log.info "Function %s : %s\n" Cil.(fn.vname) Scheme.(to_string sch);
 		(* new environment with f generalized,
 		 * this overwrites any previous binding.
 		 *)

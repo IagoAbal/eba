@@ -40,7 +40,7 @@ let (+>) (env1 :t) (env2 :t) :t =
 
 let with_fresh x env :t =
 	let z = Shape.ref_of Cil.(x.vtype) in
-	let sch = { vars = Vars.none; body = z } in
+	let sch = Scheme.({ vars = Vars.none; body = z }) in
 	(x,sch) +:: env
 
 let fresh_if_absent x env :t =
@@ -69,17 +69,19 @@ let of_bindings :(Cil.varinfo * shape scheme) list -> t =
 let with_bindings bs env :t = of_bindings bs +> env
 
 let zonk :t -> t =
+	let open Scheme in
 	let zonk_sch {vars; body} = {vars; body = Shape.zonk body}  in
 	VarMap.map zonk_sch
 
 let fv_of env :Vars.t =
+	let open Scheme in
 	VarMap.fold (fun _ {body = shp} ->
 		Vars.union (Shape.fv_of shp)
 	) env Vars.empty
 
 let pp =
 	let pp_binding (x,sch) =
-		PP.(!^ Cil.(x.vname) ++ colon ++ Shape.pp sch.body)
+		PP.(!^ Cil.(x.vname) ++ colon ++ Shape.pp Scheme.(sch.body))
 	in
 	PP.(separate newline % List.map pp_binding % VarMap.bindings)
 
