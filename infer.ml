@@ -450,13 +450,9 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GVarDecl (x,_) ->
 		let xn = Cil.(x.vname) in
 		Log.debug "Variable declaration: %s\n" xn;
-		if Hashtbl.mem Cil.builtinFunctions xn
-		then (Log.info "Skipping builtin function: %s\n" xn;
-			  env, k)
-		else
-			let env' = Env.fresh_if_absent_ax x env in
-			FileAbs.add_var fileAbs x (Env.find x env') Effects.none;
-			env', k
+		let env' = Env.fresh_if_absent_ax x env in
+		FileAbs.add_var fileAbs x (Env.find x env') Effects.none;
+		env', k
 	| Cil.GVar (x,ii,_) ->
 		let xn = Cil.(x.vname) in
 		let env' = Env.fresh_if_absent x env in
