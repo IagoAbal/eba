@@ -378,7 +378,12 @@ let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
   * NB: env must include the function itself (we assume it can be recursive).
   *)
 let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
-		: shape scheme * K.t * FunAbs.t =
+		: shape Scheme.t * K.t * FunAbs.t =
+	(* Eliminate switch, break, and continue ---for now these constructs
+	 * are not particularly interesting.
+	 *)
+	Cil.prepareCFG fd;
+	Cil.computeCFGInfo fd false;
 	let fnAbs = FunAbs.create () in
 	let fn = Cil.(fd.svar) in
 	let shp' = Scheme.((Env.find fn env).body) in (* TODO: should it be instantiated? *)

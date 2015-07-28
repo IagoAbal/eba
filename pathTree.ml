@@ -140,8 +140,6 @@ and generate_if_next fnAbs visited node =
  *)
 
 let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t Lazy.t =
-	Cil.prepareCFG fd;
-	Cil.computeCFGInfo fd false;
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> Lazy.from_val Nil
