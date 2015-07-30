@@ -353,19 +353,24 @@ and of_block_must fnAbs env rz b : E.t * K.t =
 and of_block (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
 	 sum_f_k_weak (List.map (of_stmt fnAbs env rz) Cil.(b.bstmts))
 
-(* Marks uninitialized regions for variable declarations without initializer. *)
-let of_var_no_init x z :E.t =
+(** Marks unitialized regions for a given type and shape, see [of_var_no_init]. *)
+let rec of_type_no_init ty z :E.t =
 	let open Shape in
-	match (Cil.(x.vtype),z) with
+	match (ty,z) with
 	(* Static arrays are automatically allocated but their elements are uninitialized:
 	 * Here we're matching (T[e],ref[_] ptr ref[r] _), the first reference is
 	 * statically initialized, the second is not.
 	 *)
-	| (Cil.TArray (_,Some _,_),Ref(_,Ptr(Ref(r,_))))
+	| (Cil.TArray (ty',Some _,_),Ref(_,Ptr(z'))) ->
+		of_type_no_init ty' z'
 	| (_, Ref(r,_)) ->
 		(* TODO: if it's global or static variable it should be [nulls r] *)
 		E.(just (uninits r))
 	| (_, _) -> Error.panic_with("variable has non-ref shape")
+
+(** Marks uninitialized regions for variable declarations without initializer. *)
+let of_var_no_init x z :E.t = of_type_no_init Cil.(x.vtype) z
+
 
 let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
 	let locals_bs = Scheme.fresh_bindings locals in
