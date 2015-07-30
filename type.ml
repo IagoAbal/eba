@@ -237,6 +237,8 @@ module rec Shape : sig
 			let range = of_typ res in
 			Fun { domain; effects; range; varargs }
 		| Cil.TNamed (ti,_) -> of_typ Cil.(ti.ttype)
+		| Cil.TBuiltin_va_list _ ->
+			Bot
 		| _ ->
 			Log.error "Type not supported\n"; (* TODO: Cil.d_type ty *)
 			Error.not_implemented()
