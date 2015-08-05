@@ -1765,7 +1765,18 @@ module Unify =
 		| (Struct s1,Struct s2) ->
 			if s1.sname = s2.sname
 			then unify_structs s1 s2
-			else unify_fields(Shape.list_fields s1,Shape.list_fields s2)
+			(* NB: We should not expect two arbitrary struct types to be
+			 * unifiable field by field. Most of the times there will be
+			 * no trivial field-to-field correspondence, or there will be
+			 * only a prefix of fields that can be unified.
+			 * TODO: For now we keep it simple and just unsafely accept
+			 * the constraint, later we will try to find the longest
+			 * unifiable prefix.
+			 *)
+			else begin
+				Log.warn "Trivially accepting %s ~ %s" s1.sname s2.sname;
+				ok (* unsound !!! *)
+			end
 		| (Ref(r,x),Ref(s,y))
 		-> Region.(r =~ s);
 		   x =~ y
@@ -1802,13 +1813,14 @@ module Unify =
 		| (F f1,F f2) -> EffectVar.(f1 =~ f2)
 		| _other -> Error.panic()
 
-	and unify_fields = function
-		(* TODO: Unless ([],[]) we should mark the cast as unsafe *)
-		| ([],_)
-		| (_,[]) -> ok
-		| (f1::fs1,f2::fs2) ->
-			unify_field f1 f2;
-			unify_fields(fs1,fs2)
+	(* TODO: This function should find the longest prefix of unifiable fields. *)
+	(* and unify_fields = function *)
+	(* 	(\* TODO: Unless ([],[]) we should mark the cast as unsafe *\) *)
+	(* 	| ([],_) *)
+	(* 	| (_,[]) -> ok *)
+	(* 	| (f1::fs1,f2::fs2) -> *)
+	(* 		unify_field f1 f2; *)
+	(* 		unify_fields(fs1,fs2) *)
 
 	and unify_field f1 f2 = f1.fshape =~ f2.fshape
 
