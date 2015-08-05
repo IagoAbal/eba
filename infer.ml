@@ -142,7 +142,7 @@ let rec of_exp (env :Env.t)
 	-> let z, f, k = of_lval env lv in
 	   Ptr z, f, k
 	(* TODO: This is a GCC extension, I hope not a popular one :-) *)
-	| Cil.AddrOfLabel _  -> Error.not_implemented()
+	| Cil.AddrOfLabel _  -> Error.not_implemented("of_exp: addr-of-label")
 
 and of_lval (env :Env.t)
 	: Cil.lval -> shape * Effects.t * K.t
@@ -308,7 +308,7 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 		Effects.none, K.none
 	(* TODO: still unsupported GCC extension *)
 	| Cil.ComputedGoto _
-	-> Error.not_implemented()
+	-> Error.not_implemented("of_stmtkind: computed-goto")
 	| Cil.If (e,b1,b2,loc)
 	-> let _z0, f0, k0 = of_exp env e in
 	   let      f1, k1 = of_block fnAbs env rz b1 in
@@ -316,7 +316,7 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	   FunAbs.add_loc fnAbs loc f0;
 	   Effects.(f0 + f1 + f2), K.(k0 + k1 + k2)
 	| Cil.Switch _
-	-> Error.not_implemented()
+	-> Error.not_implemented("of_stmtkind: switch")
 	(* The last two elements in the tuple refer to CFG instrumentation. *)
 	| Cil.Loop (b,_loc,_continue,_break)
 	-> of_block fnAbs env rz b
@@ -325,7 +325,7 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	(* Not interested in supporting these two from MSVC *)
 	| Cil.TryFinally _
 	| Cil.TryExcept _
-	-> Error.not_implemented()
+	-> Error.not_implemented("of_stmtkind: try-finally/except")
 
 and of_stmt (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (s :Cil.stmt)
 		: E.t * K.t =

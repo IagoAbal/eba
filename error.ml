@@ -1,9 +1,9 @@
 
-exception Not_implemented
+exception Not_implemented of string
 
-let not_implemented () = raise Not_implemented
+let not_implemented str = raise (Not_implemented str)
 
-let hole = not_implemented
+let hole () = not_implemented "<hole>"
 
 exception Panic of string
 

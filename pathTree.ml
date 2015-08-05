@@ -125,7 +125,7 @@ let rec generate fnAbs visited node :t =
 	| Cil.Switch _
 	| Cil.TryFinally _
 	| Cil.TryExcept _ ->
-		Error.not_implemented()
+		Error.panic_with("PathTree.generate: found computed-goto, switch, try-finally or try-except")
 
 and generate_if_next fnAbs visited node =
 	match next_lone visited node with

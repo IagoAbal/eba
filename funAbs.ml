@@ -80,9 +80,9 @@ let uninit_locals tbl fd :Regions.t =
 		 |> filter is_uninits
 		 |> regions
 
-let aliased _ _ = Error.not_implemented()
+let aliased _ _ = Error.not_implemented "FunAbs.aliased"
 
-let points_to _ _ = Error.not_implemented()
+let points_to _ _ = Error.not_implemented "FunAbs.points_to"
 
 let print_var out (x,sch) =
 	let loc = Utils.Location.to_string Cil.(x.vdecl) in
