@@ -29,6 +29,7 @@ let generalize_fun env k r z fnAbs
 	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs = Vars.diff fd_fv env_fv in
 	let k1 = K.minus k vs in
+	assert(Vars.for_all Var.is_meta vs);
 	let sch = Scheme.(ref_of rr (quantify vs zz)) in
 	FunAbs.zonk fnAbs;
 	sch, k1
@@ -180,6 +181,7 @@ and of_lhost (env :Env.t)
 		let sch = Env.find x env in
 		let z, k = Scheme.instantiate sch in
 		(* assert (is_ref_shape z) ? *)
+		assert(Vars.is_empty (Shape.bv_of z));
 		z, Effects.none, k
 	| Cil.Mem e ->
 		let z, f, k = of_exp env e in
@@ -201,6 +203,7 @@ let of_instr (env :Env.t)
 	| Cil.Call (lv_opt,fn,es,_loc)
 	-> (* z' fn(zs) | f *)
 	   let z0, f0, k0 = of_exp env fn in
+	   assert(Vars.is_empty (Shape.bv_of z0));
 	   let zs, f, z' = Shape.get_fun z0 in
 	   let no_args = List.length zs in
 	   assert(List.length es >= no_args);
@@ -209,6 +212,7 @@ let of_instr (env :Env.t)
 	   let sf, sk = List.fold_left2
 		(fun (f,k) z e ->
 			let ez, ef, ek = of_exp env e in
+			assert(Vars.is_empty (Shape.bv_of ez));
 			let _r, z1 = Unify.match_ref_shape z in
 			Unify.(z1 =~ ez);
 			Effects.(ef + f), K.(ek + k)
@@ -239,6 +243,7 @@ let of_instr_log fnAbs env instr =
 	 Log.debug "Instr effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)
 		   (Effects.to_string f);
+	assert(Regions.for_all Region.is_meta (Effects.regions f));
 	FunAbs.add_loc fnAbs loc f;
 	f, k
 

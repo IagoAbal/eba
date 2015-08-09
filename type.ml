@@ -77,6 +77,8 @@ module rec Shape : sig
 
 	val not_free_in : Var.t -> t -> bool
 
+	val bv_of : t -> Vars.t
+
 	(* THINK: Some of these new_ may better be named fresh_ ? *)
 
 	(** Given [z] constructs [Ref (r,z)] with [r] fresh. *)
@@ -246,6 +248,56 @@ module rec Shape : sig
 	let free_in a z = Vars.mem a (fv_of z)
 
 	let not_free_in a z = not(free_in a z)
+
+	(* TODO: Refactor with fv_of *)
+	let rec bv_of :t -> Vars.t = function
+		| Var a     -> bv_of_var a
+		| Bot       -> Vars.none
+		| Ptr z     -> bv_of z
+		| Fun f     -> bv_of_fun f
+		| Struct s  -> bv_of_struct s
+		| Ref (r,z) ->
+			let z_bv = bv_of z in
+			(* THINK: This pattern should be abstracted *)
+			if not (Region.is_meta r)
+			then Vars.add (Var.Region r) z_bv
+			else z_bv
+
+	and bv_of_var :var -> Vars.t = function
+		(* surely, if it's bound then it cannot be free :-) *)
+		| Bound _  as a -> Vars.singleton (Var.Shape a)
+		(* THINK: we go into meta variables to be more robust, should we? *)
+		| Meta (_,ma)   -> Meta.map_default bv_of Vars.empty ma
+
+    and bv_of_list (zs :t list) :Vars.t =
+    	let bvs = List.map bv_of zs in
+    	List.fold_left Vars.union Vars.empty bvs
+
+	and bv_of_fun {domain; effects; range} =
+		let dom_bv = bv_of_list domain in
+		let res_bv = bv_of range in
+		let ffv = Vars.union dom_bv res_bv in
+		if not (EffectVar.is_meta effects)
+		then Vars.add (Var.Effect effects) ffv
+		else ffv
+
+	and bv_of_struct s = s.sargs |> List.map bv_of_sarg |> Vars.sum
+
+	(* TODO: Use Region.bv_of etc *)
+	and bv_of_sarg = function
+		| Z z -> bv_of z
+		| R r ->
+			if not (Region.is_meta r)
+			then Vars.singleton (Var.Region r)
+			else Vars.none
+		| F f ->
+			if not (EffectVar.is_meta f)
+			then Vars.singleton (Var.Effect f)
+			else Vars.none
+
+	and bv_of_fields fs = Vars.sum (List.map bv_of_field fs)
+
+	and bv_of_field {fshape} = bv_of fshape
 
     let new_ref_to (z :t) :t =
         let r = Region.meta() in
@@ -637,7 +689,9 @@ module rec Shape : sig
 		try
 			let fi = List.find (fun f -> f.fname = fn) s.fields in
 			struct_inst s fi.fshape
-		with Not_found -> Error.panic_with("Shape.field")
+		with Not_found ->
+			Log.error "Struct %s has no field %s" PP.(to_string (pp_struct s)) fn;
+			Error.panic_with("Shape.field")
 
 	let rec regions_in = function
 		| Var _
@@ -1198,6 +1252,7 @@ and Effects : sig
 		}
 
 	let mem f fs =
+		assert (EffectSet.subset fs.must fs.may);
 		EffectSet.mem f fs.may
 
 	let mem_must f fs =
@@ -1680,7 +1735,7 @@ end = struct
 			let mtvs = Var.meta_of_list qvs in
 			let s = Subst.mk (List.combine qvs mtvs) in
 			let shp' = Shape.vsubst s shp in
-			assert(Vars.for_all Var.is_meta (Shape.fv_of shp'));
+			assert(Vars.is_empty (Shape.bv_of shp'));
 			let k = Vars.filter Var.is_effect (Shape.fv_of shp') in
 			shp', k
 
@@ -1840,6 +1895,7 @@ module Unify =
 			Log.warn "Cyclic shape: %s ~ %s" Shape.(to_string (Var a)) (Shape.to_string z);
 			ok (* BUT UNSOUND: raise(Occurs_check(a,z)) *)
 		| z ->
+			assert(Vars.is_empty (bv_of z));
 			Shape.write_var a z
 
 	(* z =~ ptr z1 *)
@@ -1869,6 +1925,8 @@ module Unify =
     let match_shape_with_typ (z1 :shape) (ty :Cil.typ) :shape =
     	let z2 = Shape.of_typ ty in
     	try
+			Log.debug "match_shape_with_typ \nz1 = %s\nz2 = %s" Shape.(to_string (zonk z1)) (Shape.to_string z2);
+			assert(Vars.is_empty (Shape.bv_of z1));
     		z1 =~ z2;
     		z1
     	with Cannot_unify _ -> z2 (* Oops, unsafe analysis... *)
