@@ -5,6 +5,7 @@ type copts = {
 	mutable fp_inlining : bool;
 	mutable dce : bool;
 	mutable dfe : bool;
+	mutable unsafe_casts : bool;
 }
 
 let opts : copts = {
@@ -13,6 +14,7 @@ let opts : copts = {
 	fp_inlining = true;
 	dce = true;
 	dfe = true;
+	unsafe_casts = true;
 }
 
 module Set =
@@ -28,6 +30,8 @@ struct
 
 	let dfe v = opts.dfe <- v
 
+	let unsafe_casts v = opts.unsafe_casts <- v
+
 end
 
 module Get =
@@ -42,5 +46,7 @@ struct
 	let dce () = opts.dce
 
 	let dfe () = opts.dfe
+
+	let unsafe_casts () = opts.unsafe_casts
 
 end

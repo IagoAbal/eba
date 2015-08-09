@@ -1,3 +1,4 @@
+module Opts = Opts.Get
 
 open Batteries
 
@@ -2432,37 +2433,40 @@ module Unify =
 		-> x =~ y
 		| (Fun f1,Fun f2)
 		-> unify_fun f1 f2
-		| (Struct s1,Struct s2) ->
-			if Cil.(s1.sinfo.cname = s2.sinfo.cname)
-			then unify_structs s1 s2
-			(* NB: We should not expect two arbitrary struct types to be
-			 * unifiable field by field. Most of the times there will be
-			 * no trivial field-to-field correspondence, or there will be
-			 * only a prefix of fields that can be unified.
-			 * TODO: For now we keep it simple and just unsafely accept
-			 * the constraint, later we will try to find the longest
-			 * unifiable prefix.
-			 *)
-			else begin
-				Cil.(Log.warn "Trivially accepting %s ~ %s" s1.sinfo.cname s2.sinfo.cname);
-				ok (* unsound !!! *)
-			end
+		(* TODO: Somehow handle unification of two different struct/union types. *)
+		| (Struct s1,Struct s2) when Cil.(s1.sinfo.cname = s2.sinfo.cname) ->
+			unify_structs s1 s2
 		| (Ref(r,x),Ref(s,y))
 		-> Region.(r =~ s);
 		   x =~ y
-		| __otherwise__
-		-> fail_cannot_unify s1 s2
+		(* TODO: There are more cases that can be handled gracefully, and it may
+		 * be interesting to distinguish different cases of unsafe casts.
+		 * FIXME: Some may be the result of BUGS, so an unsafe cast should be
+		 * properly identified.
+		 *)
+		| _else ->
+			if Opts.unsafe_casts()
+			then begin
+				Log.warn "UNSAFE CAST: %s ~ %s" (Shape.to_string s1) (Shape.to_string s2);
+				ok (* UNSOUND !!! *)
+			end
+			else fail_cannot_unify s1 s2
 
     and unify_fun f1 f2 =
     	let unify_dom d1 d2 =
     		try List.iter2 (=~) d1 d2
     		with Invalid_argument _ ->
-				(* Oops unsound. Doing anything more complex than this is probably not worth
-				 * the effort. Passing more arguments than required is already supported anyways.
-				 *)
-				Log.error "Couldn't unify function types with different number of arguments %s ~ %s"
-					(PP.to_string (Shape.pp_fun f1)) (PP.to_string (Shape.pp_fun f2));
-				()
+    			if Opts.unsafe_casts()
+    			then begin
+					(* UNSOUND, BUT doing anything more complex than this is
+					 * probably not worth the effort. Passing more arguments than
+					 * required is already supported anyways.
+					 *)
+					Log.warn "UNSAFE CAST: Couldn't unify function types with different number of arguments %s ~ %s"
+						(PP.to_string (Shape.pp_fun f1)) (PP.to_string (Shape.pp_fun f2));
+					ok
+				end
+				else Error.panic_with "Type.Unify.unify_fun: different number of arguments"
     	in
     	let { domain = dom1; effects = ef1; range = res1 } = f1 in
     	let { domain = dom2; effects = ef2; range = res2 } = f2 in
@@ -2501,8 +2505,12 @@ module Unify =
 		| Var b when Shape.(eq_var a b) ->
 			ok
 		| z when Shape.free_in a z ->
-			Log.warn "Cyclic shape: %s ~ %s" Shape.(to_string (Var a)) (Shape.to_string z);
-			ok (* BUT UNSOUND: raise(Occurs_check(a,z)) *)
+			if Opts.unsafe_casts()
+			then begin
+				Log.warn "UNSAFE CYCLIC SHAPE: %s ~ %s" Shape.(to_string (Var a)) (Shape.to_string z);
+				ok (* UNSOUND !!! *)
+			end
+			else raise(Occurs_check(a,z))
 		| z ->
 			assert(Vars.is_empty (bv_of z));
 			Shape.write_var a z

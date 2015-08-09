@@ -11,6 +11,8 @@ module Set : sig
 
 	val dfe : bool -> unit
 
+	val unsafe_casts : bool -> unit
+
 end
 
 module Get : sig
@@ -24,5 +26,7 @@ module Get : sig
 	val dfe : unit -> bool
 
 	val dce : unit -> bool
+
+	val unsafe_casts : unit -> bool
 
 end

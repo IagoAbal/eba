@@ -71,6 +71,7 @@ let infer_files verbosity
 		flag_gcstats flag_saveabs
 		flag_no_inlining
 		flag_no_dce flag_no_dfe
+		flag_safe_casts
 		chk_uninit chk_noret chk_dlock chk_birq
 		files =
 	Log.color_on();
@@ -80,6 +81,7 @@ let infer_files verbosity
 	Opts.Set.fp_inlining (not flag_no_inlining);
 	Opts.Set.dce (not flag_no_dce);
 	Opts.Set.dfe (not flag_no_dfe);
+	Opts.Set.unsafe_casts (not flag_safe_casts);
 	let checks = { chk_uninit; chk_noret; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
@@ -110,6 +112,10 @@ let flag_no_dfe =
 	let doc = "Do not ignore unused fields in structure types (aka dead field elimination)." in
 	Arg.(value & flag & info ["no-dfe"] ~doc)
 
+let flag_safe_casts =
+	let doc = "Fail on potentially unsafe casts." in
+	Arg.(value & flag & info ["safe-casts"] ~doc)
+
 let check_uninit =
 	let doc = "Check for uses of variables before initialization" in
 	Arg.(value & flag & info ["U"; "uninit"] ~doc)
@@ -133,6 +139,7 @@ let cmd =
 		$ verbose
 		$ flag_gcstats $ flag_saveabs
 		$ flag_no_inlining $ flag_no_dce $ flag_no_dfe
+		$ flag_safe_casts
 		$ check_uninit $ check_noret $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man
