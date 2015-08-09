@@ -53,7 +53,9 @@ let fresh_if_absent x env :t =
 (* TODO: Should check that the axiom is compatible with the function's signature. *)
 let fresh_if_absent_ax (x :Cil.varinfo) (env :t) :t =
 	let is_extern = Cil.(x.vstorage = Extern) in
-	if is_extern
+	(* An 'extern inline' declaration should be accompained with a definition,
+	 * so we generate no axiom. *)
+	if is_extern && not Cil.(x.vinline)
 	then
 		match Axioms.find Cil.(x.vname) with
 		| Some sch ->

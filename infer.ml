@@ -486,6 +486,10 @@ let of_file (file : Cil.file) :FileAbs.t =
 	let fileAbs = FileAbs.create ~no_globals in
 	let env0 = Env.empty in
 	let k0 = K.none in
+	(* TODO: We need to perform dependency analysis of functions as we do for structs.
+	 * We should also collect declarations without associated definition and generate
+	 * axioms for those, not having to look at their linkage.
+	 *)
 	let _env1, _ = List.fold_left
 		(fun (env,k) gbl ->	of_global fileAbs env k gbl)
 		(env0,k0)
