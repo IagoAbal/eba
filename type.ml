@@ -131,12 +131,18 @@ module rec Shape : sig
 
 	and result = t
 
+	(** Bound variables are NOT free by definition! *)
 	let rec fv_of :t -> Vars.t = function
 		| Var a     -> fv_of_var a
 		| Bot       -> Vars.none
 		| Ptr z     -> fv_of z
 		| Fun f     -> fv_of_fun f
-		| Ref (r,z) -> Vars.add (Var.Region r) (fv_of z)
+		| Ref (r,z) ->
+			let z_fv = fv_of z in
+			(* THINK: This pattern should be abstracted *)
+			if Region.is_meta r
+			then Vars.add (Var.Region r) z_fv
+			else z_fv
 
 	and fv_of_var :var -> Vars.t = function
 		(* surely, if it's bound then it cannot be free :-) *)
@@ -146,14 +152,17 @@ module rec Shape : sig
 			let fvs = Meta.fv_with fv_of ma in
 			Vars.add (Var.Shape a) fvs
 
-    and fv_of_list (zs :t list) :Vars.t =
+	and fv_of_list (zs :t list) :Vars.t =
     	let fvs = List.map fv_of zs in
     	List.fold_left Vars.union Vars.empty fvs
 
 	and fv_of_fun {domain; effects; range} =
 		let dom_fv = fv_of_list domain in
 		let res_fv = fv_of range in
-		Vars.add (Var.Effect effects) (Vars.union dom_fv res_fv)
+		let ffv = Vars.union dom_fv res_fv in
+		if EffectVar.is_meta effects
+		then Vars.add (Var.Effect effects) ffv
+		else ffv
 
 	let free_in a z = Vars.mem a (fv_of z)
 
@@ -555,7 +564,11 @@ end = struct
 
 	let equals f1 f2 = compare f1 f2 = 0
 
-	let fv_of = Effects.fv_of % lb_of
+	let fv_of f =
+		let lb_fv = Effects.fv_of (lb_of f) in
+		if is_meta f
+		then Vars.add (Var.Effect f) lb_fv
+		else lb_fv
 
 	let meta_with lb :t =
 		let id = Uniq.fresh() in
@@ -934,7 +947,7 @@ and Effects : sig
 		let ff = fs |> enum_may |> List.of_enum in
 		let xss = ff |> List.map (function
 			| Var x    -> EffectVar.fv_of x
-			| Mem(_,r) -> Vars.singleton (Var.Region r)
+			| Mem(_,r) when Region.is_meta r -> Vars.singleton (Var.Region r)
 			| _other   -> Vars.none
 		) in
 		Vars.sum xss
