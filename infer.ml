@@ -442,13 +442,24 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GCompTag _
 	| Cil.GEnumTag _
 	| Cil.GEnumTagDecl _ -> env, k
-	| Cil.GVarDecl (x,_) ->
+	(* extern declaration
+	 * NB: extern inline declarations should be accompained by a definition, so
+	 *     we don't generate an axiom for them.
+	 *)
+	| Cil.GVarDecl (x,_) when Cil.(x.vstorage = Extern && not x.vinline) ->
+		let xn = Cil.(x.vname) in
+		Log.debug "Extern declaration: %s\n" xn;
+		let x_ax = Axioms.find x in
+		let env' = Env.((x,x_ax) +:: env) in
+		FileAbs.add_var fileAbs x x_ax Effects.none;
+		env', k
+	| Cil.GVarDecl (x,_) -> (* var declaration / fun prototype *)
 		let xn = Cil.(x.vname) in
 		Log.debug "Variable declaration: %s\n" xn;
-		let env' = Env.fresh_if_absent_ax x env in
+		let env' = Env.fresh_if_absent x env in
 		FileAbs.add_var fileAbs x (Env.find x env') Effects.none;
 		env', k
-	| Cil.GVar (x,ii,_) ->
+	| Cil.GVar (x,ii,_) -> (* variable definition *)
 		let xn = Cil.(x.vname) in
 		let env' = Env.fresh_if_absent x env in
 		Log.debug "Global variable %s : %s\n"

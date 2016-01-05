@@ -3,6 +3,24 @@ open Batteries
 
 open Type
 
+(* Generate default axiom for an extern declaration.
+ * NB: Only function axioms are generalized (value restriction).
+ * NB: When generalizing axioms, we do not need to perform the
+ *     usual checks to avoid variable capturing, all variables
+ *     were just freshly created.
+ *)
+let mk_default x :Shape.t Scheme.t =
+	let x_ty = Cil.(x.vtype) in
+	if Cil.isFunctionType x_ty
+	then
+		let z = Shape.of_typ x_ty in
+		let z_fv = Shape.fv_of z in
+		let sch = Scheme.quantify z_fv z in
+		Scheme.({sch with body = Shape.new_ref_to sch.body })
+	else
+		Scheme.of_shape (Shape.ref_of x_ty)
+
+
 type name = string
 
 type axiom = Axiom of name * shape scheme
@@ -258,4 +276,9 @@ let axiom_map : (name,shape scheme) Hashtbl.t  =
 	add_axiom tbl local_bh_disable;
 	tbl
 
-let find fn = Hashtbl.Exceptionless.find axiom_map fn
+(* TODO: Should check that the axiom is compatible with the function's signature. *)
+let find f =
+	let fn = Cil.(f.vname) in
+	match Hashtbl.Exceptionless.find axiom_map fn with
+	| Some ax -> ax
+	| None    -> mk_default f

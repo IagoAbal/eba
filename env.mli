@@ -28,8 +28,6 @@ val (+>) : t -> t -> t
  *)
 val fresh_if_absent : Cil.varinfo -> t -> t
 
-val fresh_if_absent_ax : Cil.varinfo -> t -> t
-
 val of_bindings : (Cil.varinfo * shape scheme) list -> t
 
 (** [with_bindings bs env = of_bindings bs +> env] *)
