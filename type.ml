@@ -126,9 +126,6 @@ module rec Shape : sig
 	val get_fun : t -> args * EffectVar.t * result
 	val get_ref_fun : t -> args * EffectVar.t * result
 
-	(** Instantiate and list the fields of a struct shape *)
-	val list_fields : cstruct -> field list
-
 	val match_struct_shape : t -> cstruct
 
 	(** Look up a field in a struct shape. *)
@@ -609,7 +606,12 @@ module rec Shape : sig
 	and vsubst_field s ({fshape} as field) =
 		{field with fshape = vsubst s fshape}
 
-	let list_fields sz =
+	(* Instantiate a given shape with the struct param-args substitution.
+	 * Partial application struct_inst sz will compute the substitution
+	 * immediately, and this will be shared by subsequent applications to
+	 * a second shape argument.
+	 *)
+	let struct_inst (sz :cstruct) : t -> t =
 		let xs = sz.sargs |> List.map (function
 			| Z (Var a) -> Var.Shape a
 			| Z z -> let a = meta_var() in
@@ -620,8 +622,9 @@ module rec Shape : sig
 		)
 		in
 		let s = Subst.mk (List.combine sz.sparams xs) in
-		let fields' = vsubst_fields s sz.fields in
-		zonk_fields fields'
+		fun z ->
+			let z' = vsubst s z in
+			zonk_aux [] z'
 
 	let match_struct_shape = function
 		| Struct s -> s
@@ -630,11 +633,10 @@ module rec Shape : sig
 			| Struct s  -> s
 			| _other___ -> Error.panic_with "Shape.match_struct_shape"
 
-	(* TODO: Accept inputs of type cstruct and add a match_struct helper *)
 	let field s fn =
 		try
-			let fs = list_fields s in
-			(List.find (fun f -> f.fname = fn) fs).fshape
+			let fi = List.find (fun f -> f.fname = fn) s.fields in
+			struct_inst s fi.fshape
 		with Not_found -> Error.panic_with("Shape.field")
 
 	let rec regions_in = function
