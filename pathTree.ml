@@ -77,7 +77,16 @@ let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
 	in
 	stmts, effects
 
-let rec generate fnAbs visited node :t =
+(* IF-branching is limited to 2 ^ c_MAX_IF_COUNT
+ *
+ * Note that in pathological cases a function may have too many paths
+ * to be explored. Eg. for N sequential if statements, there are 2^N
+ * paths. Another source of path explosion are switch statements
+ * inside a loop.
+ *)
+let c_MAX_IF_COUNT = 10
+
+let rec generate fnAbs visited if_count node :t =
 	let sk = Cil.(node.skind) in
 	match sk with
 	| Cil.Instr [] (* label: e.g. as a result of prepareCFG *)
@@ -86,13 +95,13 @@ let rec generate fnAbs visited node :t =
 	| Cil.Continue _
 	| Cil.Loop _
 	| Cil.Block _ ->
-		generate_if_next fnAbs visited node
+		generate_if_next fnAbs visited if_count node
 	| Cil.Instr instrs ->
 		let iss, ef = group_by_loc fnAbs instrs in
 		let next =
 			(* NB: CIL doesn't insert a return if the instr is 'exit'. *)
 			Option.map_default (fun (node',visited') ->
-				lazy(generate fnAbs visited' node')
+				lazy(generate fnAbs visited' if_count node')
 			) (lazy Nil) (next_lone visited node)
 		in
 		Lazy.force(List.fold_right (fun (s,ef) nxt ->
@@ -110,12 +119,19 @@ let rec generate fnAbs visited node :t =
 		let ef = FunAbs.effect_of fnAbs loc in
 		let succs = Utils.match_pair (succs_of visited node) in
 		let (alt1,alt2) = succs |> Tuple2.mapn (fun (node',visited') ->
-			lazy(generate fnAbs visited' node')
+			lazy(generate fnAbs visited' (if_count+1) node')
 		) in
 		let test = Test(e,loc) in
+		(* When the branching limit is reached we simply take the else branch.
+		 * THINK: Can we do anything smart here?
+		 *)
 		let alts =
 			let left  = lazy (Assume(cond,false,alt1))  in
-			let right = lazy (Assume(cond,true,alt2)) in
+			let right =
+				if if_count <= c_MAX_IF_COUNT
+				then lazy (Assume(cond,true,alt2))
+				else lazy Nil
+			in
 			lazy(If(left,right))
 		in
 		Seq(test,ef,alts)
@@ -125,10 +141,10 @@ let rec generate fnAbs visited node :t =
 	| Cil.TryExcept _ ->
 		Error.panic_with("PathTree.generate: found computed-goto, switch, try-finally or try-except")
 
-and generate_if_next fnAbs visited node =
+and generate_if_next fnAbs visited if_count node =
 	match next_lone visited node with
 	| None                  -> Nil
-	| Some (node',visited') -> generate fnAbs visited' node'
+	| Some (node',visited') -> generate fnAbs visited' if_count node'
 
 (* [Note !noret]
  * We cut off the exploration of a path if we find !noret,
@@ -141,7 +157,7 @@ let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t Lazy.t =
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> Lazy.from_val Nil
-	| nd0::_ ->	lazy(generate fnAbs Edges.empty nd0)
+	| nd0::_ ->	lazy(generate fnAbs Edges.empty 0 nd0)
 
 type path_dec = Dec of cond * bool
 
