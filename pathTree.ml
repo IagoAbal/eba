@@ -17,7 +17,7 @@ type visited = Edges.t
 
 let succs_of visited node : (Cil.stmt * visited) list =
 	let open Cil in
-	assert(not(List.is_empty node.succs));
+	(* NB: node.succss may be empty if 'stmt' contains an exit instruction. *)
 	node.succs |> List.filter_map (fun node' ->
 		let edge = node.sid, node'.sid in
 		if Edges.mem edge visited
@@ -32,12 +32,6 @@ let next_lone visited node : (Cil.stmt * visited) option =
 	| []     -> None
 	| [next] -> Some next
 	| _other -> Error.panic()
-
-let next_one visited node =
-	let open Option in
-	let lnext = next_lone visited node in
-	assert (is_some lnext);
-	get lnext
 
 type step = Stmt of Cil.instr list * Cil.location
           | Test of Cil.exp        * Cil.location
@@ -94,9 +88,13 @@ let rec generate fnAbs visited node :t =
 	| Cil.Block _ ->
 		generate_if_next fnAbs visited node
 	| Cil.Instr instrs ->
-		let node', visited' = next_one visited node in
 		let iss, ef = group_by_loc fnAbs instrs in
-		let next = lazy(generate fnAbs visited' node') in
+		let next =
+			(* NB: CIL doesn't insert a return if the instr is 'exit'. *)
+			Option.map_default (fun (node',visited') ->
+				lazy(generate fnAbs visited' node')
+			) (lazy Nil) (next_lone visited node)
+		in
 		Lazy.force(List.fold_right (fun (s,ef) nxt ->
 				(* cut off if !noret is found *)
 			if (E.mem_must E.noret ef)
