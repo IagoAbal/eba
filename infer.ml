@@ -491,6 +491,13 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 
 (* TODO: globinit ? *)
 let of_file (file : Cil.file) :FileAbs.t =
+	(* Dead code elimination: C headers tend to include lots of code that is not
+	 * used by the translation unit, we therefore remove any code that cannot be
+	 * reached from the _extern_ visible code.
+	 * TODO: DCE can do a better job if given a complete program, it would be
+	 * desirable to check for a main() function, or get it via a flag.
+	 *)
+	Rmtmps.(removeUnusedTemps ?isRoot:(Some isExportedRoot) file);
 	process_structs file;
 	(* TODO: Here we can read axioms *)
 	let no_globals = List.length Cil.(file.globals) in
