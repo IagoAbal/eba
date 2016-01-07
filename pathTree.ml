@@ -1,4 +1,12 @@
-(* Keep it simple here, if we want more expressivity we better integrate this with Coccinelle *)
+(* Keep it simple here, just basic reachability checking, if we want more expressivity we better integrate this with Coccinelle *)
+
+(* TODO:
+ * - Rethink how we bound depth and width.
+ * - Apart from limiting how many times we take goto-ish edges,
+ *   we could also put another limit on loop iterations.
+ * - Maybe go back to store node x effects,
+ *   which could help joining paths by accumulated effects;
+ *)
 
 open Batteries
 
@@ -6,25 +14,50 @@ open Type
 
 module L = LazyList
 
-module Edges = Set.Make(
+module Edges = Map.Make(
 	struct
+		(* Edges are identified by the stmt-id of their source and target. *)
 		type t = int * int
 		let compare = Pervasives.compare
 	end
 )
 
-type visited = Edges.t
+(* We count how many times an edge has been taken. We're only interested
+ * in edges that may result in loops, and an approximation to this is to
+ * keep track of those edges whose target is a labeled statement
+ * (presumably the target of a jump statement like `goto').
+ *
+ * This approximation may have limitations, yet to be found. But we
+ * cannot require that the source is goto|continue|break because in CIL
+ * the last statement of a loop jumps to the first statement of the loop
+ * body without introducing any explicit jump.
+ *)
+type visited = int Edges.t
+
+(* No labeled edge can be taken more than c_MAX_TAKEN times in each path. *)
+let c_MAX_TAKEN = 1 (* NB: this seems enough for taking a loop twice *)
+
+let is_labeled node :bool = not Cil.(List.is_empty node.labels)
+
+(* Returns [None] if the transition is disallowed. *)
+let take_edge visited node node' : visited option =
+	let open Cil in
+	let edge = node.sid, node'.sid in
+	match Edges.Exceptionless.find edge visited with
+	| Some n when n >= c_MAX_TAKEN -> None
+	| _else_______________________ ->
+		let visited' =
+			if is_labeled node'
+			then Edges.modify_def 0 edge Int.succ visited
+			else visited
+		in
+		Some visited'
 
 let succs_of visited node : (Cil.stmt * visited) list =
-	let open Cil in
 	(* NB: node.succss may be empty if 'stmt' contains an exit instruction. *)
-	node.succs |> List.filter_map (fun node' ->
-		let edge = node.sid, node'.sid in
-		if Edges.mem edge visited
-		then None
-		else
-			let visited' = Edges.add edge visited in
-			Some (node', visited')
+	Cil.(node.succs) |> List.filter_map (fun node' ->
+		take_edge visited node node' |>
+				Option.map (fun visited' -> node',visited')
 	)
 
 let next_lone visited node : (Cil.stmt * visited) option =
@@ -117,23 +150,25 @@ let rec generate fnAbs visited if_count node :t =
 	| Cil.If (e,_,_,loc) ->
 		let cond = Cond(e,loc) in
 		let ef = FunAbs.effect_of fnAbs loc in
-		let succs = Utils.match_pair (succs_of visited node) in
-		let (alt1,alt2) = succs |> Tuple2.mapn (fun (node',visited') ->
-			lazy(generate fnAbs visited' (if_count+1) node')
-		) in
-		let test = Test(e,loc) in
-		(* When the branching limit is reached we simply take the else branch.
-		 * THINK: Can we do anything smart here?
-		 *)
-		let alts =
-			let left  = lazy (Assume(cond,false,alt1))  in
-			let right =
-				if if_count <= c_MAX_IF_COUNT
-				then lazy (Assume(cond,true,alt2))
-				else lazy Nil
-			in
-			lazy(If(left,right))
+		let take_branch dec node' =
+			match take_edge visited node node' with
+			| None ->
+				lazy Nil
+			| Some visited' ->
+				let alt = lazy(generate fnAbs visited' (if_count+1) node') in
+				lazy (Assume (cond,dec,alt))
 		in
+		assert Cil.(List.length node.succs = 2);
+		(* THINK: What would be the smart strategy when c_MAX_IF_COUNT is reached? *)
+		let if_else, if_then = Utils.match_pair Cil.(node.succs) in
+		let left (* else *) =
+			if if_count <= c_MAX_IF_COUNT
+			then take_branch false if_else
+			else lazy Nil (* no more branching ! *)
+		in
+		let right (* then *) = take_branch true if_then in
+		let test = Test(e,loc) in
+		let alts = lazy(If(left,right)) in
 		Seq(test,ef,alts)
 	| Cil.ComputedGoto _
 	| Cil.Switch _
