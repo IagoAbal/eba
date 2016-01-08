@@ -17,6 +17,13 @@ module rec Shape : sig
 	       | Struct of cstruct
 	       | Ref of Region.t * t
 
+	(** Two shape variables must be compared using [eq_var] or [uniq_of].
+	 *
+	 * DO NOT use OCaml's structural equality:
+	 * If the variable is pointing to a larger shape such as a struct,
+	 * OCaml's structural equality may use too much memory, or even enter
+	 * an infinite loop if the struct definition is cyclic.
+	 *)
 	and var
 
 	and fun_shape =
@@ -97,6 +104,8 @@ module rec Shape : sig
 	val uniq_of : var -> Uniq.t
 
 	val is_meta : var -> bool
+
+	val eq_var : var -> var -> bool
 
 	val read_var : var -> t option
 
@@ -326,6 +335,8 @@ module rec Shape : sig
 	let is_meta = function
 		| Meta  _ -> true
 		| Bound _ -> false
+
+	let eq_var a b = uniq_of a = uniq_of b
 
 	let read_var : Shape.var -> Shape.t option = function
 		| Meta(_,mz) -> Meta.read mz
@@ -1805,7 +1816,7 @@ module Unify =
 
 	let rec (=~) s1 s2 =
 		match (s1,s2) with
-		| (Var a,Var b) when a = b ->
+		| (Var a,Var b) when Shape.(eq_var a b) ->
 			assert (Shape.is_meta a);
 			assert (Shape.is_meta b);
 			ok
@@ -1889,7 +1900,7 @@ module Unify =
 		| Some z1 -> z1 =~ z
 
 	and unify_unbound_var a = function
-		| Var b when a = b ->
+		| Var b when Shape.(eq_var a b) ->
 			ok
 		| z when Shape.free_in (Var.Shape a) z ->
 			Log.warn "Cyclic shape: %s ~ %s" Shape.(to_string (Var a)) (Shape.to_string z);
