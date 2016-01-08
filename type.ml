@@ -1934,12 +1934,12 @@ module Unify =
 	(* TODO: If unification fails,
 	   what about the variables that were unified already? *)
     let match_shape_with_typ (z1 :shape) (ty :Cil.typ) :shape =
-    	let z2 = Shape.of_typ ty in
+    	let z2 = Shape.of_typ ty in (* shape of the type cast expression *)
     	try
 			Log.debug "match_shape_with_typ \nz1 = %s\nz2 = %s" Shape.(to_string (zonk z1)) (Shape.to_string z2);
 			assert(Vars.is_empty (Shape.bv_of z1));
     		z1 =~ z2;
-    		z1
+    		z2
     	with Cannot_unify _ -> z2 (* Oops, unsafe analysis... *)
 
 	end
