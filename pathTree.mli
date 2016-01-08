@@ -16,16 +16,25 @@ val loc_of_step : step -> Cil.location
 (** If condition. *)
 type cond = Cond of Cil.exp * Cil.location
 
+type 'a delayed = unit -> 'a
+
 (* Execution paths.
  *
  * NB:
  * - Every path ends with [Nil].
+ * - If there is no [Ret] the path has been cut due to an `exit' or
+ *   due to path search bounds.
  * - Path conditions are encoded with [Assume].
+ *
+ * THINK:
+ * - By using [delayed] we avoid having to keep the whole tree in memory.
+ * - To avoid constructing it repeteadly, we should combine checkers.
+ * - To avoid the extra memory allocation, we could use CPS.
  *)
 type t = Nil
-       | Assume of cond * bool * t Lazy.t
-       | Seq of step * Effects.t * t Lazy.t
-       | If of t Lazy.t * t Lazy.t
+       | Assume of cond * bool * t delayed
+       | Seq of step * Effects.t * t delayed
+       | If of t delayed * t delayed
 
 (* Compute an approximation of all execution paths in a function.
  *
@@ -36,7 +45,7 @@ type t = Nil
  * The algorithm inserts [Nil] and backtracks when an already
  * visited state is reached.
  *)
-val paths_of : FunAbs.t -> Cil.fundec -> t Lazy.t
+val paths_of : FunAbs.t -> Cil.fundec -> t delayed
 
 type st_pred = Effects.t -> bool
 
@@ -57,7 +66,8 @@ val pp_path : path -> PP.doc
  * `P' and `Q' are predicates over computational effects.
  *)
 val reachable :
-	t Lazy.t ->
+	bool -> (* keep searching *)
+	t delayed ->
 	guard:st_pred ->
 	target:st_pred ->
-	(Cil.location * path * t Lazy.t) LazyList.t
+	(Cil.location * path * t delayed) LazyList.t

@@ -52,19 +52,56 @@ module Make (A :Spec) : S = struct
 		A.doc_of_report fn bug loc1 loc2 trace
 	)
 
+	let same_loc (l1,_,_) (l2,_,_) = l1 = l2
+
+	let cmp_match (l1,p1,_) (l2,p2,_) :int =
+		(* Order reversed so that L.unique_eq will take the simplest match *)
+		let lc = compare l1 l2 in
+		if lc = 0
+		then
+			let pc = compare (List.length p1) (List.length p2) in
+			if pc = 0
+			then -(compare p1 p2)
+			else -pc
+		else -lc
+
+	(* Remove redundant traces keeping the shortest one (wrt [cmp_match]). *)
+	let nodup =
+		(* If we use List.t instead of LazyList.t we can achieve the same result.
+		 * by composing group and map.
+		 * NB: L.unique_eq is under specified, so it can change in future versions.
+		 *)
+		L.(unique_eq ~eq:same_loc % (sort ~cmp:cmp_match))
+
 	let search fd pt st =
-		(* p1 EU q1 *)
-		let ps1 = reachable pt
+		(* p1 EU q1
+		 * Even if we find a match, we keep searching for more if P1 holds.
+		 * We want to find all Q1's, otherwise eg if a lock is manipulated
+		 * correctly once, any subsequent manipulations of the same lock would
+		 * be ignored:
+		 *
+		 *     lock       <--- Q1
+		 *     unlock
+		 *     lock       <--- ignored
+		 *     lock
+		 *)
+		let ps1 = reachable true pt
 			~guard:(A.testP1 st)
 			~target:(A.testQ1 st)
 		in
-		(* ... => X(p2 EU q2) *)
-		let rss = ps1 |> L.map (fun (l1,p1,pt') ->
-			let ps2 = reachable pt'
+		(* ... => X(p2 EU q2)
+		 * - Once a complete match Q1-->Q2 is found it usually makes little
+		 *   sense to keep searching for more.
+		 * - If we reach the same location in different ways, we just keep the
+		 *   we just keep the shortest (first) one wrt [cmp_match].
+		 *)
+		let rss = nodup ps1 |> L.map (fun (l1,p1,pt') ->
+			let ps2 = reachable false pt'
 				~guard:(A.testP2 st)
 				~target:(A.testQ2 st)
 			in
-			ps2 |> L.map (fun (l2,p2,_) ->
+			(* THINK: ps2_nodup just in strict mode? *)
+			nodup ps2 |> L.map (fun (l2,p2,_) ->
 				{ fn   = Cil.(fd.svar)
 				; bug  = A.bug_of_st st
 				; loc1 = l1

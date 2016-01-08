@@ -78,10 +78,12 @@ let loc_of_step = function
 	| Ret (_,loc) ->
 		loc
 
+type 'a delayed = unit -> 'a
+
 type t = Nil
-       | Assume of cond * bool * t Lazy.t
-       | Seq of step * Effects.t * t Lazy.t
-       | If of t Lazy.t * t Lazy.t
+       | Assume of cond * bool * t delayed
+       | Seq of step * Effects.t * t delayed
+       | If of t delayed * t delayed
 
 (* Group instructions by location
  *
@@ -134,29 +136,29 @@ let rec generate fnAbs visited if_count node :t =
 		let next =
 			(* NB: CIL doesn't insert a return if the instr is 'exit'. *)
 			Option.map_default (fun (node',visited') ->
-				lazy(generate fnAbs visited' if_count node')
-			) (lazy Nil) (next_lone visited node)
+				fun () -> generate fnAbs visited' if_count node'
+			) (fun () -> Nil) (next_lone visited node)
 		in
-		Lazy.force(List.fold_right (fun (s,ef) nxt ->
+		(List.fold_right (fun (s,ef) nxt ->
 				(* cut off if !noret is found *)
 			if (E.mem_must E.noret ef)
-			then lazy(Seq(s,ef,lazy Nil))
-			else lazy(Seq(s,ef,nxt))
-		) iss next)
+			then fun () -> Seq(s,ef,fun () -> Nil)
+			else fun () -> Seq(s,ef,nxt)
+		) iss next) ()
 	| Cil.Return(e_opt,loc) ->
 		let ret = Ret(e_opt,loc) in
 		let ef = FunAbs.effect_of fnAbs loc in
-		Seq(ret,ef,lazy Nil)
+		Seq(ret,ef,fun () -> Nil)
 	| Cil.If (e,_,_,loc) ->
 		let cond = Cond(e,loc) in
 		let ef = FunAbs.effect_of fnAbs loc in
 		let take_branch dec node' =
 			match take_edge visited node node' with
 			| None ->
-				lazy Nil
+				fun () -> Nil
 			| Some visited' ->
-				let alt = lazy(generate fnAbs visited' (if_count+1) node') in
-				lazy (Assume (cond,dec,alt))
+				let alt = fun () -> generate fnAbs visited' (if_count+1) node' in
+				fun () -> Assume (cond,dec,alt)
 		in
 		assert Cil.(List.length node.succs = 2);
 		(* THINK: What would be the smart strategy when c_MAX_IF_COUNT is reached? *)
@@ -164,11 +166,11 @@ let rec generate fnAbs visited if_count node :t =
 		let left (* else *) =
 			if if_count <= c_MAX_IF_COUNT
 			then take_branch false if_else
-			else lazy Nil (* no more branching ! *)
+			else fun () -> Nil (* no more branching ! *)
 		in
 		let right (* then *) = take_branch true if_then in
 		let test = Test(e,loc) in
-		let alts = lazy(If(left,right)) in
+		let alts = fun () -> If(left,right) in
 		Seq(test,ef,alts)
 	| Cil.ComputedGoto _
 	| Cil.Switch _
@@ -188,11 +190,11 @@ and generate_if_next fnAbs visited if_count node =
  * to check it for the `Instr' case.
  *)
 
-let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t Lazy.t =
+let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t delayed =
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
-	| []     -> Lazy.from_val Nil
-	| nd0::_ ->	lazy(generate fnAbs Edges.empty 0 nd0)
+	| []     -> fun () -> Nil
+	| nd0::_ -> fun () -> generate fnAbs Edges.empty 0 nd0
 
 type path_dec = Dec of cond * bool
 
@@ -217,18 +219,20 @@ type st_pred = Effects.t -> bool
 
 (* TODO: We should return the statement or expression together with the location *)
 
-let rec reachable t ~guard ~target :(Cil.location * path * t Lazy.t) L.t =
+let rec reachable ks t ~guard ~target :(Cil.location * path * t delayed) L.t =
 	let open L in
-	match Lazy.force t with
+	match t() with
 	| Assume(cond,b,t') ->
 		let dec = Dec(cond,b) in
-		map (push_dec dec) (reachable t' guard target)
+		map (push_dec dec) (reachable ks t' guard target)
 	| Seq(step,ef,t') ->
-	   record_if_matches ~target step ef t'
-		^@^ keep_searching ~guard ~target step ef t'
+		let ms = record_if_matches ~target step ef t' in
+		if L.is_empty ms || ks
+		then ms ^@^ keep_searching ks ~guard ~target step ef t'
+		else ms
 	| If(t1,t2) ->
-		let br1 = reachable t1 guard target in
-		let br2 = reachable t2 guard target in
+		let br1 = reachable ks t1 guard target in
+		let br2 = reachable ks t2 guard target in
 		br1 ^@^ br2
 	(* TODO: Allow to specify how many levels of Loop to investigate *)
 	| __otherwise__ ->
@@ -243,11 +247,11 @@ and record_if_matches ~target step ef t' =
 	end
 	else L.nil
 
-and keep_searching ~guard ~target step ef t' =
+and keep_searching ks ~guard ~target step ef t' =
 	let loc = loc_of_step step in
 	if guard ef
 	then begin
 		Log.debug "reachable guard at %s" (Utils.Location.to_string loc);
-		reachable t' guard target
+		reachable ks t' guard target
 	end
 	else L.nil

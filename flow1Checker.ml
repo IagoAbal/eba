@@ -43,7 +43,7 @@ module Make (A :Spec) : S = struct
 	))
 
 	let search fd pt r : report L.t =
-		let lps = reachable pt ~guard:(A.testP r) ~target:(A.testQ r) in
+		let lps = reachable false pt ~guard:(A.testP r) ~target:(A.testQ r) in
 		let mk_report (l,p,_) = {
 			fn = Cil.(fd.svar);
 			reg = r;
