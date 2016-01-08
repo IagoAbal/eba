@@ -27,7 +27,11 @@ let generalize_fun env k r z fnAbs
 	let abs_fv = FunAbs.fv_of fnAbs in
 	let fd_fv = Vars.(z_fv + abs_fv) in
 	let env_fv = Env.fv_of (Env.zonk env) in
-	let vs = Vars.diff fd_fv env_fv in
+	let vs' = Vars.diff fd_fv env_fv in
+	  (* Prevents incorrect quantification over the function's code region [r]
+	   * in case of a function that calls itself.
+	   *)
+	let vs = Vars.remove (Var.Region rr) vs' in
 	let k1 = K.minus k vs in
 	assert(Vars.for_all Var.is_meta vs);
 	let sch = Scheme.(ref_of rr (quantify vs zz)) in
