@@ -1735,7 +1735,7 @@ and Constraints : sig
 	end
 
 and Scheme : sig
-	type 'a t = { vars : Vars.t; body : 'a }
+	type 'a t = { vars : (Var.t,[`Read]) Array.Cap.t; body : 'a }
 	val instantiate : Shape.t t -> Shape.t * Constraints.t
 	val quantify : Vars.t -> Shape.t -> Shape.t t
 	val ref_of : Region.t -> Shape.t t -> Shape.t t
@@ -1752,13 +1752,16 @@ and Scheme : sig
 	val to_string : Shape.t t -> string
 end = struct
 
-	type 'a t = { vars : Vars.t; body : 'a }
+	type 'a t = { vars : (Var.t,[`Read]) Array.Cap.t; body : 'a }
 
 	let instantiate :Shape.t t -> Shape.t * Constraints.t =
 		fun { vars; body = shp} ->
-			let qvs = Vars.to_list vars in
-			let mtvs = Var.meta_of_list qvs in
-			let s = Subst.mk (List.combine qvs mtvs) in
+			let qvs = Array.Cap.enum vars in
+			let qvs_mtvs = qvs |> Enum.map (fun qv ->
+				let mtv = Var.meta_of qv in
+				qv, mtv
+			) in
+			let s = Subst.of_enum qvs_mtvs in
 			let shp' = Shape.vsubst s shp in
 			assert(Vars.is_empty (Shape.bv_of shp'));
 			let k = Vars.filter Var.is_effect (Shape.fv_of shp') in
@@ -1766,11 +1769,14 @@ end = struct
 
 	(* THINK: [let xs = Vars.map f vs] to avoid intermediate lists *)
 	let quantify vs z =
-		let ys = Vars.to_list vs in
-		let xs = Var.bound_of_list ys in
-		(* write into vs's *)
-		List.iter2 Var.write ys xs;
-		let xs' = Vars.zonk_lb (Vars.of_list xs) in
+		let ys = Vars.enum vs in
+		let xs = ys |> Enum.map (fun y ->
+			let x = Var.bound_of y in
+			Var.write y x;
+			x
+		) |> Array.Cap.of_enum in
+		(* CAREFUL with the order of effects, all writes must take place before zonking. *)
+		let xs' = xs |> Array.Cap.enum |> Enum.map Var.zonk_lb |> Array.Cap.of_enum in
 		let z' = Shape.zonk z in
 		{ vars = xs'; body = z' }
 
@@ -1778,7 +1784,7 @@ end = struct
 		{ sch with body = Shape.Ref(r,sch.body) }
 
 	let regions_in sch = Shape.regions_in sch.body
-	let of_shape z = { vars = Vars.none; body = z }
+	let of_shape z = { vars = Array.Cap.of_list []; body = z }
 	let of_varinfo x = of_shape (Shape.of_varinfo x)
 	let effects_of_fun sch =
 		let _,f,_ = Shape.get_ref_fun sch.body in
@@ -1789,8 +1795,18 @@ end = struct
 	(* THINK: also Vars.zonk_lb ? *)
 	let zonk sch = { sch with body = Shape.zonk sch.body }
 
+	(* TODO: refactor ... pretty printing *)
 	let pp {vars; body} =
-		PP.(!^ "forall" ++ Vars.pp vars + !^ "." ++ Shape.pp body)
+		let pp_max_vars = 10 in
+		let pvars = vars |> Array.Cap.enum |> Enum.take pp_max_vars  in
+		let pvars_docs = pvars |> Enum.map Var.pp |> List.of_enum in
+		let ending =
+			if Array.Cap.length vars < pp_max_vars
+			then []
+			else PP.([!^ "..."])
+		in
+		let vars_doc = PP.braces (PP.space_sep (pvars_docs @ ending)) in
+		PP.(!^ "forall" ++ vars_doc + !^ "." ++ Shape.pp body)
 
 	let to_string = PP.to_string % pp
 end

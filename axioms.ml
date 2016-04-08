@@ -51,7 +51,7 @@ let assert_fail :axiom =
 		let open Var in
 		(* TODO: Move as smart constructor for Type.Vars *)
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Shape z1;Effect f1] @ regions [r1;r2;r3;r4;r5;r6;r7])
+		Array.Cap.of_list ([Shape z1;Effect f1] @ regions [r1;r2;r3;r4;r5;r6;r7])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1;arg2;arg3;arg4]
@@ -74,7 +74,7 @@ let malloc :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1;Shape z1] @ regions [r1;r2])
+		Array.Cap.of_list ([Effect f1;Shape z1] @ regions [r1;r2])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1]
@@ -97,7 +97,7 @@ let free :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1;Shape z1] @ regions [r1;r2])
+		Array.Cap.of_list ([Effect f1;Shape z1] @ regions [r1;r2])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1]
@@ -125,7 +125,7 @@ let memcpy :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1;Shape z1] @ regions [r1;r2;r3;r4;r5])
+		Array.Cap.of_list ([Effect f1;Shape z1] @ regions [r1;r2;r3;r4;r5])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1;arg2;arg3]
@@ -147,7 +147,7 @@ let spin_lock :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1] @ regions [r1;r2])
+		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1]
@@ -169,7 +169,7 @@ let spin_unlock :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1] @ regions [r1;r2])
+		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1]
@@ -194,7 +194,7 @@ let spin_lock_irq :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1] @ regions [r1;r2])
+		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1]
@@ -219,7 +219,7 @@ let spin_unlock_irq :axiom =
 	let vars =
 		let open Var in
 		let regions = List.map (fun r -> Region r) in
-		Vars.of_list ([Effect f1] @ regions [r1;r2])
+		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = [arg1]
@@ -233,7 +233,7 @@ let spin_unlock_irq :axiom =
 let local_bh_enable :axiom =
 	let r0 = Region.meta() in
 	let f1 = EffectVar.bound_with E.(just BhsOn) in
-	let vars = Vars.of_list [Var.Effect f1]
+	let vars = Array.Cap.of_list [Var.Effect f1]
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = []
@@ -247,7 +247,7 @@ let local_bh_enable :axiom =
 let local_bh_disable :axiom =
 	let r0 = Region.meta() in
 	let f1 = EffectVar.bound_with E.(just BhsOff) in
-	let vars = Vars.of_list [Var.Effect f1]
+	let vars = Array.Cap.of_list [Var.Effect f1]
 	in
 	let body = Shape.(Ref(r0,Fun {
 		  domain  = []

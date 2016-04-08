@@ -40,7 +40,7 @@ let (+>) (env1 :t) (env2 :t) :t =
 
 let with_fresh x env :t =
 	let z = Shape.ref_of Cil.(x.vtype) in
-	let sch = Scheme.({ vars = Vars.none; body = z }) in
+	let sch = Scheme.({ vars = Array.Cap.of_list []; body = z }) in
 	(x,sch) +:: env
 
 let fresh_if_absent x env :t =
