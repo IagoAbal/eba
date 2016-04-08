@@ -1,6 +1,4 @@
-USE_OCAMLFIND = true
-BYTE_ENABLED = true
-NATIVE_ENABLED = false
+PROGRAM = eba
 
 FILES[] =
     error
@@ -25,6 +23,10 @@ FILES[] =
     checkDLockFlow2
     checkBhOnIrqFlow2
 
+USE_OCAMLFIND = true
+BYTE_ENABLED = true
+NATIVE_ENABLED = true
+
 OCAMLPACKS[] += batteries cil ocamlgraph smart_print cmdliner dolog
 OCAMLFLAGS += -thread
 
@@ -33,11 +35,12 @@ OCamlLibrary(libeba, $(FILES))
 OCAML_LIBS = libeba
 OCamlProgram(eba, eba)
 
-.DEFAULT: eba
+.DEFAULT: $(if $(BYTE_ENABLED), $(PROGRAM).run) \
+          $(if $(NATIVE_ENABLED), $(PROGRAM).opt)
 
 # Cleanup
 .PHONY: clean
 clean:
   rm -f \
      $(filter-proper-targets $(glob $(addsuffix .*, $(FILES)))) \
-     eba.cma eba.cmxa eba.a
+     libeba.cma libeba.cmxa libeba.a eba.cma eba.cmxa eba.a
