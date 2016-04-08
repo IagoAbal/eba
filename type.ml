@@ -65,8 +65,8 @@ module rec Shape : sig
 	 *)
 	and cstruct =
 		{         sname   : name
-		; mutable sargs   : struct_arg list
-		; mutable sparams : Var.t list
+		; mutable sargs   : (struct_arg, [`Read]) Array.Cap.t
+		; mutable sparams : (Var.t, [`Read]) Array.Cap.t
 		; mutable fields  : fields
 		}
 
@@ -186,8 +186,8 @@ module rec Shape : sig
 
 	and cstruct =
 		{         sname   : name
-		; mutable sargs   : struct_arg list
-		; mutable sparams : Var.t list
+		; mutable sargs   : (struct_arg, [`Read]) Array.Cap.t
+		; mutable sparams : (Var.t, [`Read]) Array.Cap.t
 		; mutable fields  : fields
 		}
 
@@ -236,7 +236,7 @@ module rec Shape : sig
 		then Vars.add (Var.Effect effects) ffv
 		else ffv
 
-	and fv_of_struct s = s.sargs |> List.map fv_of_sarg |> Vars.sum
+	and fv_of_struct s = s.sargs |> Array.Cap.enum |> Enum.map fv_of_sarg |> Vars.enum_sum
 
 	(* TODO: Use Region.fv_of etc *)
 	and fv_of_sarg = function
@@ -290,7 +290,7 @@ module rec Shape : sig
 		then Vars.add (Var.Effect effects) ffv
 		else ffv
 
-	and bv_of_struct s = s.sargs |> List.map bv_of_sarg |> Vars.sum
+	and bv_of_struct s = s.sargs |> Array.Cap.enum |> Enum.map bv_of_sarg |> Vars.enum_sum
 
 	(* TODO: Use Region.bv_of etc *)
 	and bv_of_sarg = function
@@ -375,13 +375,14 @@ module rec Shape : sig
 		let open PP in
 		let args_doc =
 			let pp_max_sargs = 5 in
-			let args = List.take pp_max_sargs s.sargs in
+			let pargs = s.sargs |> Array.Cap.enum |> Enum.take pp_max_sargs  in
+			let pargs_docs = pargs |> Enum.map pp_sarg |> List.of_enum in
 			let ending =
-				if List.length s.sargs < pp_max_sargs
+				if Array.Cap.length s.sargs < pp_max_sargs
 				then []
 				else [!^ "..."]
 			in
-			comma_sep (List.map pp_sarg args @ ending)
+			comma_sep (pargs_docs @ ending)
 		in
 		!^ "struct" ++ !^ (s.sname) + angle_brackets(args_doc)
 	and pp_sarg = function
@@ -415,8 +416,8 @@ module rec Shape : sig
 	 * that the shapes of the fields have been generalized correctly,
 	 * and thus there must not be any free meta variable in them. *)
 	and lint_struct_aux d (s :cstruct) :unit =
-		assert(List.length s.sargs = List.length s.sparams);
-		assert(List.for_all (not % Var.is_meta) s.sparams);
+		assert(Array.Cap.length s.sargs = Array.Cap.length s.sparams);
+		assert(Array.Cap.for_all (not % Var.is_meta) s.sparams);
 		let ffvs = fv_of_fields s.fields in
 		let valid_params = Vars.is_empty ffvs in
 		if not valid_params then begin
@@ -447,7 +448,7 @@ module rec Shape : sig
 
 	(* Instantiate a parameterized struct shape with fresh meta variables. *)
 	let inst_struct s =
-		let new_args = s.sparams |> Var.meta_of_list |> List.map sarg_of_var in
+		let new_args = s.sparams |> Array.Cap.map (sarg_of_var % Var.meta_of) in
 		let s' = { s with sargs = new_args } in
 		lint_struct s';
 		s'
@@ -477,7 +478,7 @@ module rec Shape : sig
 	and zonk_dom_aux cache d = List.map (zonk_aux cache) d
 	and zonk_struct_aux cache s =
 		match List.Exceptionless.assoc s.sname cache with
-		| None -> { s with sargs = List.map zonk_sarg s.sargs }
+		| None -> { s with sargs = Array.Cap.map zonk_sarg s.sargs }
 		| Some sz -> sz
 	and zonk_sarg = function
 		| Z z -> Z (zonk z)
@@ -533,7 +534,7 @@ module rec Shape : sig
 				 * a dummy struct. See Struct module.
 				 *)
 				Log.error "of_typ: struct not found in cache: %s" name;
-				{ sname = name; sargs = []; sparams = []; fields = [] }
+				{ sname = name; sargs = Array.Cap.of_list []; sparams = Array.Cap.of_list []; fields = [] }
 				(* Error.panic_with("struct not in cache: " ^ name) *)
 			| Some z -> z
 		end
@@ -568,8 +569,8 @@ module rec Shape : sig
 		 *)
 		let mk_dummy ci =
 			{ sname   = Cil.(ci.cname);
-			  sargs   = [];
-			  sparams = [];
+			  sargs   = Array.Cap.of_list [];
+			  sparams = Array.Cap.of_list [];
 			  fields  = []
 			}
 		in
@@ -583,15 +584,18 @@ module rec Shape : sig
 		 * THINK: Can we distinguish between struct declaration and instance?
 		 *)
 		let fvs =
-			auxs |> List.map (fun aux -> fv_of_fields (aux.fields)) |> Vars.sum
+			auxs |> List.enum |> Enum.map (fun aux -> fv_of_fields (aux.fields)) |> Vars.enum_sum
 		in
 		let params =
-			let ys = Vars.to_list fvs in
-			let xs = Var.bound_of_list ys in
-			List.iter2 Var.write ys xs;
-			Vars.to_list (Vars.zonk_lb (Vars.of_list xs))
+			let ys = Vars.enum fvs in
+			let xs = ys |> Enum.map (fun y ->
+				let x = Var.bound_of y in
+				Var.write y x;
+				x
+			) in
+			Array.Cap.of_enum (Enum.map Var.zonk_lb xs)
 		in
-		let sargs = List.map sarg_of_var params in
+		let sargs = Array.Cap.map sarg_of_var params in
 		(* STEP 3: Set all the [sparams] and [sargs] pointers appropriately,
 		 * and zonk fields shapes.
 		 *)
@@ -660,7 +664,7 @@ module rec Shape : sig
     	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r'; varargs }
 	and vsubst_struct s z =
-		{ z with sargs = List.map (vsubst_sarg s) z.sargs }
+		{ z with sargs = Array.Cap.map (vsubst_sarg s) z.sargs }
 	and vsubst_sarg s = function
 		| Z z -> Z (vsubst s z)
 		| R r -> R (Region.vsubst s r)
@@ -675,7 +679,7 @@ module rec Shape : sig
 	 * a second shape argument.
 	 *)
 	let struct_inst (sz :cstruct) : t -> t =
-		let xs = sz.sargs |> List.map (function
+		let xs = Array.Cap.enum sz.sargs |> Enum.map (function
 			| Z (Var a) -> Var.Shape a
 			| Z z -> let a = meta_var() in
 					  write_var a z;
@@ -684,7 +688,7 @@ module rec Shape : sig
 			| F f -> Var.Effect f
 		)
 		in
-		let s = Subst.mk (List.combine sz.sparams xs) in
+		let s = Subst.of_enum (Enum.combine(Array.Cap.enum sz.sparams,xs)) in
 		fun z ->
 			let z' = vsubst s z in
 			zonk_aux [] z'
@@ -716,7 +720,7 @@ module rec Shape : sig
 	(* THINK: Should I turn it into PP.tuple ~pp ? *)
 	and regions_in_args args = args |> List.map regions_in |> Regions.sum
 	and regions_in_struct s =
-		s.sargs |> List.map regions_in_sarg |> Regions.sum
+		s.sargs |> Array.Cap.enum |> Enum.map regions_in_sarg |> Regions.sum_enum
 	and regions_in_sarg = function
 		| Z z -> regions_in z
 		| R r -> Regions.singleton r
@@ -838,6 +842,7 @@ and Regions : sig
 	val (+) : t -> t -> t
 	val (-) : t -> t -> t
 	val sum : t list -> t
+	val sum_enum : t Enum.t -> t
 	val pp : t -> PP.doc
 	val to_string : t -> string
 	end
@@ -847,6 +852,7 @@ and Regions : sig
 		let (+) = union
 		let (-) = diff
 		let sum = List.fold_left union none
+		let sum_enum = Enum.fold union none
 		let pp x = PP.braces (PP.space_sep (List.map Region.pp (elements x)))
 		let to_string = PP.to_string % pp
 	end
@@ -1525,6 +1531,8 @@ and Var : sig
 
 	val meta_of_list : t list -> t list
 
+	val bound_of : t -> t
+
 	val bound_of_list : t list -> t list
 
 	val write : t -> t -> unit
@@ -1643,6 +1651,7 @@ and Vars : sig
 	val none : t
 	val (+) : t -> t -> t
 	val sum : t list -> t
+	val enum_sum : t Enum.t -> t
 	val zonk_lb : t -> t
 	val pp : t -> PP.doc
 	val to_string : t -> string
@@ -1652,6 +1661,7 @@ and Vars : sig
 		let none = empty
 		let (+) = union
 		let sum = List.fold_left union none
+		let enum_sum = Enum.fold union none
 		let zonk_lb = map Var.zonk_lb
 		let pp x = PP.braces (PP.space_sep (List.map Var.pp (elements x)))
 		let to_string = PP.to_string % pp
@@ -1668,6 +1678,8 @@ and Subst : sig
 
 	val mk : (Var.t * 'a) list -> 'a t
 
+	val of_enum : (Var.t * 'a) Enum.t -> 'a t
+
 	val find : Var.t -> 'a t -> 'a option
 
 	val find_default : 'a -> Var.t -> 'a t -> 'a
@@ -1682,6 +1694,8 @@ and Subst : sig
 	let mk : (Var.t * 'a) list -> 'a t = fun xs ->
 		(* assert all variables are "Bound" *)
 		VarMap.of_enum (List.enum xs)
+
+	let of_enum = VarMap.of_enum
 
 	let find = VarMap.Exceptionless.find
 
@@ -1870,7 +1884,7 @@ module Unify =
 
 	and unify_structs s1 s2 =
 		assert(s1.sname = s2.sname);
-		List.iter2 unify_sarg s1.sargs s2.sargs
+		Array.Cap.iter2 unify_sarg s1.sargs s2.sargs
 
 	and unify_sarg a1 a2 =
 		match (a1,a2) with
