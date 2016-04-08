@@ -21,6 +21,10 @@ let green = colored "0;32"
 let purple = colored "0;35"
 let cyan = colored "0;36"
 
+let string_of_cil ppr x :string =
+	let x_doc = ppr () x in
+	Pretty.sprint ~width:60 x_doc
+
 module Varinfo =
 struct
 
