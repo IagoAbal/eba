@@ -373,17 +373,7 @@ module rec Shape : sig
 		PP.(parens (comma_sep (List.map pp args) + pp_varargs))
 	and pp_struct s =
 		let open PP in
-		let args_doc =
-			let pp_max_sargs = 5 in
-			let pargs = s.sargs |> Array.Cap.enum |> Enum.take pp_max_sargs  in
-			let pargs_docs = pargs |> Enum.map pp_sarg |> List.of_enum in
-			let ending =
-				if Array.Cap.length s.sargs < pp_max_sargs
-				then []
-				else [!^ "..."]
-			in
-			comma_sep (pargs_docs @ ending)
-		in
+		let args_doc = Utils.pp_upto 10 PP.comma pp_sarg (Array.Cap.enum s.sargs) in
 		!^ "struct" ++ !^ (s.sname) + angle_brackets(args_doc)
 	and pp_sarg = function
 		| Z z -> pp z
@@ -1425,12 +1415,11 @@ and Effects : sig
 
 	let pp_group : e list -> PP.doc = function
 		| (Mem(k,_)::_) as es ->
-			let pp_rs = List.map (function
+			let pp_reg = function
 				| (Mem(_,r)) -> Region.pp r
 				| _other____ -> Error.panic()
-			) es
 			in
-			PP.(pp_kind k + brackets(PP.comma_sep pp_rs))
+			PP.(pp_kind k + brackets(Utils.pp_upto 10 PP.comma pp_reg (List.enum es)))
 		| [e]                 -> pp_e e
 		| _other_____________ -> Error.panic()
 
@@ -1684,6 +1673,10 @@ and Subst : sig
 
 	val find_default : 'a -> Var.t -> 'a t -> 'a
 
+	val pp : Var.t t -> PP.doc
+
+	val to_string : Var.t t -> string
+
 	end
 	= struct
 
@@ -1701,6 +1694,12 @@ and Subst : sig
 
 	let find_default v x s =
 		Option.(find x s |? v)
+
+	let pp s =
+		let pp_binding (x,y) = PP.(Var.pp x ++ !^ "->" ++ Var.pp y) in
+		PP.braces (Utils.pp_upto 20 PP.comma pp_binding (VarMap.enum s))
+
+	let to_string = PP.to_string % pp
 
 	end
 
@@ -1797,15 +1796,7 @@ end = struct
 
 	(* TODO: refactor ... pretty printing *)
 	let pp {vars; body} =
-		let pp_max_vars = 10 in
-		let pvars = vars |> Array.Cap.enum |> Enum.take pp_max_vars  in
-		let pvars_docs = pvars |> Enum.map Var.pp |> List.of_enum in
-		let ending =
-			if Array.Cap.length vars < pp_max_vars
-			then []
-			else PP.([!^ "..."])
-		in
-		let vars_doc = PP.braces (PP.space_sep (pvars_docs @ ending)) in
+		let vars_doc = Utils.pp_upto 10 PP.space Var.pp (Array.Cap.enum vars) in
 		PP.(!^ "forall" ++ vars_doc + !^ "." ++ Shape.pp body)
 
 	let to_string = PP.to_string % pp

@@ -25,6 +25,18 @@ let string_of_cil ppr x :string =
 	let x_doc = ppr () x in
 	Pretty.sprint ~width:60 x_doc
 
+let pp_upto max sep pp_el els =
+	let open PP in
+	let max_els = Enum.take max els in
+	let more_els = not Enum.(is_empty (skip max els)) in
+	let els_docs = max_els |> Enum.map pp_el |> List.of_enum in
+	let ending =
+		if more_els
+		then [!^ "..."]
+		else []
+	in
+	separate sep (els_docs @ ending)
+
 module Varinfo =
 struct
 
