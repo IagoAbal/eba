@@ -1636,23 +1636,53 @@ and Var : sig
 	end
 
 and Vars : sig
-	include Set.S with type elt := Var.t
+	type t
 	val none : t
+	val empty : t
+	val singleton : Var.t -> t
+	val is_empty : t -> bool
+	val mem : Var.t -> t -> bool
+	val subset : t -> t -> bool
+	val for_all : (Var.t -> bool) -> t -> bool
+	val cardinal : t -> int
+	val add : Var.t -> t -> t
+	val remove : Var.t -> t -> t
 	val (+) : t -> t -> t
+	val union : t -> t -> t
+	val diff : t -> t -> t
 	val sum : t list -> t
 	val enum_sum : t Enum.t -> t
+	val filter : (Var.t -> bool) -> t -> t
 	val zonk_lb : t -> t
+	(* val zonk_fv_of : t -> t *)
+	val enum : t -> Var.t Enum.t
+	val of_enum : Var.t Enum.t -> t
 	val pp : t -> PP.doc
 	val to_string : t -> string
 	end
 	= struct
-		include Set.Make(Var)
-		let none = empty
-		let (+) = union
-		let sum = List.fold_left union none
+		module VarSet = Set.Make(Var)
+		type t = VarSet.t
+		let none = VarSet.empty
+		let empty = VarSet.empty
+		let singleton = VarSet.singleton
+		let is_empty = VarSet.is_empty
+		let mem = VarSet.mem
+		let subset = VarSet.subset
+		let for_all = VarSet.for_all
+		let cardinal = VarSet.cardinal
+		let add = VarSet.add
+		let remove = VarSet.remove
+		let (+) = VarSet.union
+		let union = (+)
+		let diff = VarSet.diff
+		let sum = List.fold_left VarSet.union VarSet.empty
 		let enum_sum = Enum.fold union none
-		let zonk_lb = map Var.zonk_lb
-		let pp x = PP.braces (PP.space_sep (List.map Var.pp (elements x)))
+		let filter = VarSet.filter
+		let zonk_lb = VarSet.map Var.zonk_lb
+		let enum = VarSet.enum
+		let of_enum = VarSet.of_enum
+		let pp x = PP.braces (PP.space_sep (List.map Var.pp (VarSet.elements x)))
 		let to_string = PP.to_string % pp
 	end
 
