@@ -213,29 +213,33 @@ let of_instr (env :Env.t)
 	   assert(List.length es >= no_args);
 	   let (es_args,es_varargs) = List.split_at no_args es in
 	   (* arguments *)
-	   let sf, sk = List.fold_left2
-		(fun (f,k) z e ->
+	   let es_args_zs_rev, sf, sk = List.fold_left2
+		(fun (ezs,f,k) z e ->
 			let ez, ef, ek = of_exp env e in
 			assert(Vars.is_empty (Shape.bv_of ez));
 			let _r, z1 = Unify.match_ref_shape z in
 			Unify.(z1 =~ ez);
-			Effects.(ef + f), K.(ek + k)
+			ez::ezs, Effects.(ef + f), K.(ek + k)
 		)
-		E.(just_var f + f0,k0) zs es_args in
+		E.([],just_var f + f0,k0) zs es_args in
 	   (* extra arguments
 	    * hack: We assume that every extra argument is just "fully read",
 	    * which works well for bugs like http://vbdb.itu.dk/#bug/linux/1c17e4d.
 	    * This is unsound since we assume no other effects.
 	    *)
-	   let sf', sk' = es_varargs |> List.fold_left (fun (f,k) e ->
+	   let es_zs_rev, sf', sk' = es_varargs |> List.fold_left (fun (ezs,f,k) e ->
 			let ez, ef, ek = of_exp env e in
-			E.(fully_read ez + ef + f), K.(ek + k)
-	   ) (sf,sk)
+			ez::ezs, E.(fully_read ez + ef + f), K.(ek + k)
+	   ) (es_args_zs_rev,sf,sk)
 	   in
+	   let es_zs = List.rev es_zs_rev in
+	   (* extra effect footprint *)
+	   let footprint = Axioms.footprint fn z0 es es_zs in
+	   let sf'' = E.(footprint + sf') in
 	   (* assignment (optional) *)
 	   begin match lv_opt with
-	   | None    -> sf', sk'
-	   | Some lv -> with_lval_set env z' sf' sk' lv
+	   | None    -> sf'', sk'
+	   | Some lv -> with_lval_set env z' sf'' sk' lv
 	   end
 	(* Oops, unsound :_( *)
 	| Cil.Asm _ ->

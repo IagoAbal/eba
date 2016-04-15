@@ -136,100 +136,6 @@ let memcpy :axiom =
 	in
 	Axiom("memcpy", Scheme.({vars; body}))
 
-let spin_lock :axiom =
-	let r0 = Region.meta() in
-	let r1 = Region.bound() in
-	let r2 = Region.bound() in
-	let f1 = EffectVar.bound_with
-		E.(just (locks r2) +. reads r1 +. reads r2 +. writes r2)
-	in
-	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
-	let vars =
-		let open Var in
-		let regions = List.map (fun r -> Region r) in
-		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
-	in
-	let body = Shape.(Ref(r0,Fun {
-		  domain  = [arg1]
-		; effects = f1
-		; range   = Bot
-		; varargs = false
-	}))
-	in
-	Axiom("spin_lock", Scheme.({vars; body}))
-
-let spin_unlock :axiom =
-	let r0 = Region.meta() in
-	let r1 = Region.bound() in
-	let r2 = Region.bound() in
-	let f1 = EffectVar.bound_with
-		E.(just (unlocks r2) +. reads r1 +. reads r2 +. writes r2)
-	in
-	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
-	let vars =
-		let open Var in
-		let regions = List.map (fun r -> Region r) in
-		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
-	in
-	let body = Shape.(Ref(r0,Fun {
-		  domain  = [arg1]
-		; effects = f1
-		; range   = Bot
-		; varargs = false
-	}))
-	in
-	Axiom("spin_unlock", Scheme.({vars; body}))
-
-let spin_lock_irq :axiom =
-	let r0 = Region.meta() in
-	let r1 = Region.bound() in
-	let r2 = Region.bound() in
-	let f1 = EffectVar.bound_with
-		E.(just (locks r2) +. reads r1
-		   +. reads r2 +. writes r2
-		   +. IrqsOff
-		)
-	in
-	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
-	let vars =
-		let open Var in
-		let regions = List.map (fun r -> Region r) in
-		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
-	in
-	let body = Shape.(Ref(r0,Fun {
-		  domain  = [arg1]
-		; effects = f1
-		; range   = Bot
-		; varargs = false
-	}))
-	in
-	Axiom("spin_lock_irq", Scheme.({vars; body}))
-
-let spin_unlock_irq :axiom =
-	let r0 = Region.meta() in
-	let r1 = Region.bound() in
-	let r2 = Region.bound() in
-	let f1 = EffectVar.bound_with
-		E.(just (unlocks r2) +. reads r1
-		   +. reads r2 +. writes r2
-		   +. IrqsOn
-		)
-	in
-	let arg1 = Shape.(Ref(r1,Ptr(Ref(r2,Bot)))) in
-	let vars =
-		let open Var in
-		let regions = List.map (fun r -> Region r) in
-		Array.Cap.of_list ([Effect f1] @ regions [r1;r2])
-	in
-	let body = Shape.(Ref(r0,Fun {
-		  domain  = [arg1]
-		; effects = f1
-		; range   = Bot
-		; varargs = false
-	}))
-	in
-	Axiom("spin_unlock_irq", Scheme.({vars; body}))
-
 let local_bh_enable :axiom =
 	let r0 = Region.meta() in
 	let f1 = EffectVar.bound_with E.(just BhsOn) in
@@ -268,10 +174,6 @@ let axiom_map : (name,shape scheme) Hashtbl.t  =
 	add_axiom tbl malloc;
 	add_axiom tbl free;
 	add_axiom tbl memcpy;
-	add_axiom tbl spin_lock;
-	add_axiom tbl spin_unlock;
-	add_axiom tbl spin_lock_irq;
-	add_axiom tbl spin_unlock_irq;
 	add_axiom tbl local_bh_enable;
 	add_axiom tbl local_bh_disable;
 	tbl
@@ -282,3 +184,59 @@ let find f =
 	match Hashtbl.Exceptionless.find axiom_map fn with
 	| Some ax -> ax
 	| None    -> mk_default f
+
+let getopt32_fp f _fz _pes pzs :E.t =
+	let ef_on_param pz =
+		let open Shape in
+		match pz with
+		| Ptr(Ref(r2,_)) ->
+			E.(none +. writes r2)
+		| _else_________________ ->
+			E.none
+	in
+	if Cil.(f.vname = "getopt32")
+	(* getopt32(char **argv, const char *applet_opts, ...) *)
+	then pzs |> List.drop 2 |> List.map ef_on_param |> E.sum
+	else E.none
+
+let spin_lock_fp f _fz _pes pzs :E.t =
+	if Cil.(f.vname = "spin_lock" || f.vname = "spin_lock_irq")
+	(* void spin_lock(spinlock_t *lock) *)
+	then
+		let open Shape in
+		match pzs with
+		| [Ptr(Ref(r2,_))] when Cil.(f.vname = "spin_lock_irq")
+		                   -> E.(none +. locks r2 +. IrqsOff)
+		| [Ptr(Ref(r2,_))] -> E.(none +. locks r2)
+		| _else___________ -> E.none
+	else E.none
+
+let spin_unlock_fp f _fz _pes pzs :E.t =
+	if Cil.(f.vname = "spin_unlock" || f.vname = "spin_unlock_irq")
+	(* void spin_unlock(spinlock_t *lock) *)
+	then
+		let open Shape in
+		match pzs with
+		| [Ptr(Ref(r2,_))] when Cil.(f.vname = "spin_unlock_irq")
+		                   -> E.(none +. unlocks r2 +. IrqsOn)
+		| [Ptr(Ref(r2,_))] -> E.(none +. unlocks r2)
+		| _else___________ -> E.none
+	else E.none
+
+(* TODO: This is called on every function call, so it must be fast.
+ * Right now, this is O(n) where n = number of footprint axioms. But any solution
+ * should allow writing a single axiom for multiple functions at once: eg. when
+ * those functions have similar signature and can be identified by a naming
+ * convention. We could use a pair of hash-tables indexed by prefixes (ie. xyz_)
+ * and suffixes (ie. _xyz) respectively. That may be enough to handle large
+ * amounts of footprint axioms efficiently.
+ *)
+let footprint fe fz pes pzs =
+	match fe with
+	| Cil.Lval (Cil.Var f,Cil.NoOffset) ->
+		E.sum [getopt32_fp f fz pes pzs
+			  ;spin_lock_fp f fz pes pzs
+			  ;spin_unlock_fp f fz pes pzs
+			  ]
+	| _other___________________________ ->
+		E.none
