@@ -582,8 +582,12 @@ module rec Shape : sig
 				let x = Var.bound_of y in
 				Var.write y x;
 				x
-			) in
-			Array.Cap.of_enum (Enum.map Var.zonk_lb xs)
+			) |> Array.Cap.of_enum in
+			assert(xs |> Array.Cap.for_all (fun x ->
+				not (Var.is_effect x)
+				|| (Effects.is_empty (EffectVar.lb_of (Var.to_effect x)))
+				));
+			xs (* NB: lb's must be empty so no need to zonk_lb here *)
 		in
 		let sargs = Array.Cap.map sarg_of_var params in
 		(* STEP 3: Set all the [sparams] and [sargs] pointers appropriately,
@@ -1058,6 +1062,8 @@ and Effects : sig
 
 	val none : t
 
+	val is_empty : t -> bool
+
 	val allocs : r:Region.t -> e
 
 	val frees : r:Region.t -> e
@@ -1211,6 +1217,8 @@ and Effects : sig
 		  may  = EffectSet.empty
 		; must = EffectSet.empty
 	}
+
+	let is_empty {may} = EffectSet.is_empty may
 
 	let just e = {
 		  may  = EffectSet.singleton e
