@@ -482,16 +482,31 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 		let fn = Cil.(fd.svar) in
 		Log.debug "In function %s\n" Cil.(fn.vname);
 		(* we may know about fn already, if there is any function declaration *)
-		let env' = Env.fresh_if_absent fn env in
+		let env' =
+			if Cil.(fn.vstorage = Extern && not fn.vinline)
+			(* Due to my hacky handling of mutually recursive functions (FIXME)
+			 * every extern non-inline function declaration is given a polymorphic
+			 * axiom by default (unless the user specifies one). When/if the
+			 * definition is found, this axiom must be removed from the environment.
+			 * Otherwise the presence of a polymorphic axiom in the environment
+			 * will break shape inference for recursive functions which is based
+			 * on monomorphic recursion! It may make sense to support polymorphic
+			 * recursion when the axiom is given by the user, but that is future
+			 * work.
+			 *)
+			then Env.remove fn env
+			else env
+		in
+		let env'' = Env.fresh_if_absent fn env' in
 		(* infer *)
-		let sch, k1, fnAbs = of_fundec env' k fd in
+		let sch, k1, fnAbs = of_fundec env'' k fd in
 		Log.info "Function %s : %s\n" Cil.(fn.vname) Scheme.(to_string sch);
 		(* new environment with f generalized,
 		 * this overwrites any previous binding.
 		 *)
-		let env' = Env.add fn sch env in
-		FileAbs.add_fun fileAbs fn (Env.find fn env') fnAbs;
-		env', k1
+		let env1 = Env.add fn sch env in
+		FileAbs.add_fun fileAbs fn (Env.find fn env1) fnAbs;
+		env1, k1
 	(* Oooh, we're unsound here :_( *)
 	| Cil.GAsm _
 	| Cil.GPragma _ -> env, k
