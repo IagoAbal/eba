@@ -64,7 +64,7 @@ module rec Shape : sig
 	 * to write complicated travesals that examine the fields.
 	 *)
 	and cstruct =
-		{         sname   : name
+		{         sinfo   : Cil.compinfo
 		; mutable sargs   : (struct_arg, [`Read]) Array.Cap.t
 		; mutable sparams : (Var.t, [`Read]) Array.Cap.t
 		; mutable fields  : fields
@@ -74,7 +74,7 @@ module rec Shape : sig
 
 	and fields = field list
 
-	and field = { fname : name; fshape : t }
+	and field = { finfo : Cil.fieldinfo; fshape : t }
 
 	val fv_of : t -> Vars.t
 
@@ -185,7 +185,7 @@ module rec Shape : sig
 	and result = t
 
 	and cstruct =
-		{         sname   : name
+		{         sinfo   : Cil.compinfo
 		; mutable sargs   : (struct_arg, [`Read]) Array.Cap.t
 		; mutable sparams : (Var.t, [`Read]) Array.Cap.t
 		; mutable fields  : fields
@@ -195,7 +195,7 @@ module rec Shape : sig
 
 	and fields = field list
 
-	and field = { fname : name; fshape : t }
+	and field = { finfo : Cil.fieldinfo; fshape : t }
 
 	let sarg_of_var = function
 		| Var.Shape  a -> Z (Var a)
@@ -374,13 +374,13 @@ module rec Shape : sig
 	and pp_struct s =
 		let open PP in
 		let args_doc = Utils.pp_upto 10 PP.comma pp_sarg (Array.Cap.enum s.sargs) in
-		!^ "struct" ++ !^ (s.sname) + angle_brackets(args_doc)
+		!^ "struct" ++ !^ Cil.(s.sinfo.cname) + angle_brackets(args_doc)
 	and pp_sarg = function
 		| Z z -> pp z
 		| R r -> Region.pp r
 		| F f -> EffectVar.pp f
 	and pp_fields fs = PP.(separate (!^ "; ") (List.map pp_field fs))
-	and pp_field {fname;fshape} = PP.(!^ fname ++ colon ++ pp fshape)
+	and pp_field {finfo;fshape} = PP.(!^ Cil.(finfo.fname) ++ colon ++ pp fshape)
 
 	let to_string = PP.to_string % pp
 
@@ -467,7 +467,7 @@ module rec Shape : sig
 		}
 	and zonk_dom_aux cache d = List.map (zonk_aux cache) d
 	and zonk_struct_aux cache s =
-		match List.Exceptionless.assoc s.sname cache with
+		match List.Exceptionless.assoc Cil.(s.sinfo.cname) cache with
 		| None -> { s with sargs = Array.Cap.map zonk_sarg s.sargs }
 		| Some sz -> sz
 	and zonk_sarg = function
@@ -524,7 +524,7 @@ module rec Shape : sig
 				 * a dummy struct. See Struct module.
 				 *)
 				Log.error "of_typ: struct not found in cache: %s" name;
-				{ sname = name; sargs = Array.Cap.of_list []; sparams = Array.Cap.of_list []; fields = [] }
+				{ sinfo = ci; sargs = Array.Cap.of_list []; sparams = Array.Cap.of_list []; fields = [] }
 				(* Error.panic_with("struct not in cache: " ^ name) *)
 			| Some z -> z
 		end
@@ -538,7 +538,7 @@ module rec Shape : sig
 	 * struct variable uninitialized after writing to one of its fields?
 	 *)
 	and of_field memo cache fi =
-		Cil.({ fname = fi.fname; fshape = of_typ_cache memo cache fi.ftype })
+		Cil.({ finfo = fi; fshape = of_typ_cache memo cache fi.ftype })
 
     and ref_of_cache memo cache ty :t =
     	let z = of_typ_cache memo cache ty in
@@ -558,17 +558,18 @@ module rec Shape : sig
 		 * we're tying the knot!
 		 *)
 		let mk_dummy ci =
-			{ sname   = Cil.(ci.cname);
+			{ sinfo   = ci;
 			  sargs   = Array.Cap.of_list [];
 			  sparams = Array.Cap.of_list [];
 			  fields  = []
 			}
 		in
 		let auxs = List.map mk_dummy cis in
-		let cache = List.map (fun aux -> aux.sname,aux) auxs in
+		let cache = List.map (fun aux -> Cil.(aux.sinfo.cname),aux) auxs in
 	    List.iter2 (fun ci aux ->
 			aux.fields <- of_fields memo cache Cil.(ci.cfields);
 		) cis auxs;
+		(* THINK: if we want to merge fields, it could be done here. *)
 		(* STEP 2: Compute the type parameters of the structures and
 		 * set the default instance arguments.
 		 * THINK: Can we distinguish between struct declaration and instance?
@@ -608,7 +609,7 @@ module rec Shape : sig
 				(PP.to_string (pp_struct aux))
 				(PP.to_string (pp_fields aux.fields));
 			lint_struct aux;
-			Hashtbl.add memo aux.sname aux
+			Hashtbl.add memo Cil.(aux.sinfo.cname) aux
 		) auxs
 
 	let infer_struct ci = infer_structs [ci]
@@ -696,7 +697,7 @@ module rec Shape : sig
 
 	let field s fn =
 		try
-			let fi = List.find (fun f -> f.fname = fn) s.fields in
+			let fi = List.find Cil.(fun f -> f.finfo.fname = fn) s.fields in
 			struct_inst s fi.fshape
 		with Not_found ->
 			Log.error "Struct %s has no field %s" PP.(to_string (pp_struct s)) fn;
@@ -1890,7 +1891,7 @@ module Unify =
 		| (Fun f1,Fun f2)
 		-> unify_fun f1 f2
 		| (Struct s1,Struct s2) ->
-			if s1.sname = s2.sname
+			if Cil.(s1.sinfo.cname = s2.sinfo.cname)
 			then unify_structs s1 s2
 			(* NB: We should not expect two arbitrary struct types to be
 			 * unifiable field by field. Most of the times there will be
@@ -1901,7 +1902,7 @@ module Unify =
 			 * unifiable prefix.
 			 *)
 			else begin
-				Log.warn "Trivially accepting %s ~ %s" s1.sname s2.sname;
+				Cil.(Log.warn "Trivially accepting %s ~ %s" s1.sinfo.cname s2.sinfo.cname);
 				ok (* unsound !!! *)
 			end
 		| (Ref(r,x),Ref(s,y))
@@ -1928,7 +1929,7 @@ module Unify =
     	res1 =~ res2
 
 	and unify_structs s1 s2 =
-		assert(s1.sname = s2.sname);
+		assert Cil.(s1.sinfo.cname = s2.sinfo.cname);
 		Array.Cap.iter2 unify_sarg s1.sargs s2.sargs
 
 	and unify_sarg a1 a2 =
