@@ -18,13 +18,15 @@ open Shape
  *)
 
 (* generalize functions shapes *)
+(* TODO: solve local subeffecting constraints. *)
 let generalize_fun env k r z fnAbs
 	: shape scheme * K.t =
 	let rr = Region.zonk r in
 	let zz = Shape.zonk z in
 	FunAbs.zonk fnAbs;
 	let z_fv = Shape.fv_of zz in
-	let abs_fv = FunAbs.fv_of fnAbs in
+	  (* Generalize unconstrained local variables too. *)
+	let abs_fv = FunAbs.fv_of_locals fnAbs in
 	let fd_fv = Vars.(z_fv + abs_fv) in
 	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs' = Vars.diff fd_fv env_fv in

@@ -33,11 +33,13 @@ let add_loc tbl loc eff =
 		   (Effects.to_string eff);
 	LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.locs
 
-let fv_of tbl =
-	let fv1 = VarMap.fold (fun _ sch fvs ->
+let fv_of_locals tbl =
+	VarMap.fold (fun _ sch fvs ->
 		Vars.(Scheme.fv_of sch + fvs)
 	) tbl.vars Vars.none
-	in
+
+let fv_of tbl =
+	let fv1 = fv_of_locals tbl in
 	LocMap.fold (fun _ ef fvs ->
 		Vars.(Effects.fv_of ef + fvs)
 	) tbl.locs fv1

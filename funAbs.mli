@@ -20,6 +20,8 @@ val add_vars : t -> (Cil.varinfo * shape scheme) list -> unit
 
 val add_loc : t -> Cil.location -> Effects.t -> unit
 
+val fv_of_locals : t -> Vars.t
+
 val fv_of : t -> Vars.t
 
 val zonk : t -> unit
