@@ -70,7 +70,7 @@ let finalize = VarMap.map_inplace (fun _ -> finalize_entry)
 let print_var out x s f =
 	let loc = Utils.Location.to_string Cil.(x.vdecl) in
 	let name = Utils.cyan Cil.(x.vname) in
-	let shp = Shape.to_string Scheme.(s.body) in
+	let shp = Scheme.to_string s in
 	let eff = Effects.to_string f in
 	Printf.fprintf out "\n%s: %s : %s & %s\n" loc name shp eff
 
