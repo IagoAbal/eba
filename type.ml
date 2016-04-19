@@ -1301,7 +1301,7 @@ and Effects : sig
 		else cmp_must
 
 	let of_enum fe =
-		let (mayE,mustE) = Enum.span (Option.is_some % is_may) fe in
+		let (mayE,mustE) = Enum.partition (Option.is_some % is_may) fe in
 		let mays = mayE |> Enum.map uncertain |> EffectSet.of_enum in
 		let musts = mustE |> Enum.map uncertain |> EffectSet.of_enum in
 		assert(EffectSet.subset musts mays);
