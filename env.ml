@@ -67,7 +67,7 @@ let fv_of env :Vars.t =
 	) env Vars.empty
 
 let print_binding out (x,sch) =
-	Printf.fprintf out "%s : %s" Cil.(x.vname) Scheme.(to_string sch)
+	Printf.fprintf out "%s : %s\n" Cil.(x.vname) Scheme.(to_string sch)
 
 let fprint out = List.iter (print_binding out) % VarMap.bindings
 
