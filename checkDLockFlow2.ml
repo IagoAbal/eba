@@ -21,6 +21,8 @@ module Spec = struct
 
 	let locks r ef :bool = E.(mem_must (locks r) ef)
 
+	let may_lock r ef :bool = E.(mem (locks r) ef)
+
 	let locks_and_not_unlocks r ef = locks r ef && not_unlocks r ef
 
 	let testP1 _ _ = true
@@ -29,7 +31,7 @@ module Spec = struct
 
 	let testP2 = not_unlocks
 
-	let testQ2 = locks
+	let testQ2 = may_lock
 
 	type bug = Region.t
 
