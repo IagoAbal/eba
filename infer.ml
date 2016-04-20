@@ -19,7 +19,7 @@ open Shape
 
 (* generalize functions shapes *)
 (* TODO: solve local subeffecting constraints. *)
-let generalize_fun env k r z fnAbs
+let generalize_fun env_fv k r z fnAbs
 	: shape scheme * K.t =
 	let rr = Region.zonk r in
 	let zz = Shape.zonk z in
@@ -28,7 +28,6 @@ let generalize_fun env k r z fnAbs
 	  (* Generalize unconstrained local variables too. *)
 	let abs_fv = FunAbs.fv_of_locals fnAbs in
 	let fd_fv = Vars.(z_fv + abs_fv) in
-	let env_fv = Env.fv_of (Env.zonk env) in
 	let vs' = Vars.diff fd_fv env_fv in
 	  (* Prevents incorrect quantification over the function's code region [r]
 	   * in case of a function that calls itself.
@@ -42,8 +41,7 @@ let generalize_fun env k r z fnAbs
 
 (* THINK: We should not need to operate on Enum.t *)
 (* THINK: We can fuse zonk and filter with filter_map *)
-let observe (env :Env.t) ef :E.t =
-	let env_fv = Env.fv_of (Env.zonk env) in
+let observe env_fv ef :E.t =
     let is_observable = function
 		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
 		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
@@ -416,7 +414,10 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	   as the FV of the set of effects computed for the body of the function? *)
 	let bf, k1 = of_block_must fnAbs env'' z_res body in
 	let ff = E.(lf + bf) in
-	let ff' = observe env' ff in (* FIXME in the paper: not env but env'! *)
+	(* Share FV computation *)
+	let env_nofn_fv = Env.(fv_of (zonk (remove fn env))) in
+	let env'_fv = List.fold_left (fun fvs (_,s) -> Vars.union Scheme.(fv_of (zonk s)) fvs) (Vars.union Shape.(fv_of (zonk shp')) env_nofn_fv) args_bs in
+	let ff' = observe env'_fv ff in (* FIXME in the paper: not env but env'! *)
 	(* f >= ff' may introduce a recursive subeffecting constraint
 	   if the function is recursive.
 	   Possible FIX? Create a new fresh effect variable? f' >= ff'?
@@ -425,7 +426,19 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	 *)
 	let k2 = K.add f ff' k1 in
 	(* THINK: Maybe we should generalize in of_global *)
-	let sch, k3 = generalize_fun (Env.remove fn env) k2 f_r shp'' fnAbs in
+	(* NB: if f is captured by the environment, so its lb-effects are.
+	 * Failing to do so, and generalizing variables in ff',
+	 * another function g() whose effect depends on f, will get
+	 * third-party quantified variables into its effect signature,
+	 * violating Scheme.t invariant.
+	 *)
+	let env_nofn_fv2 =
+		let open Vars in
+		if mem (Var.Effect f) env_nofn_fv
+		then union env_nofn_fv Effects.(fv_of (zonk ff'))
+		else env_nofn_fv
+	in
+	let sch, k3 = generalize_fun env_nofn_fv2 k2 f_r shp'' fnAbs in
 	sch, k3, fnAbs
 
 let rec of_lv_init env lv :Cil.init -> E.t * K.t = function
