@@ -5,6 +5,7 @@ FILES[] =
     utils
     pP
     uniq
+    opts
     type
     axioms
     env
