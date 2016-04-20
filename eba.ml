@@ -45,6 +45,11 @@ let run_checks checks file fileAbs :unit =
 let infer_file checks fn =
 	let file = Frontc.parse fn () in
 	let fileAbs = Infer.of_file file in
+	if Opts.Get.save_abs()
+	then begin
+		let fn_abs = fn ^ ".abs" in
+		File.with_file_out fn_abs (fun out -> FileAbs.fprint out fileAbs)
+	end;
 	run_checks checks file fileAbs;
 	if Opts.Get.gc_stats()
 	then begin
@@ -62,10 +67,11 @@ let log_level_of_int = function
 	| 2 -> Log.INFO
 	| x -> Log.DEBUG (* x >= 3 *)
 
-let infer_files verbosity flag_gcstats chk_uninit chk_noret chk_dlock chk_birq files =
+let infer_files verbosity flag_gcstats flag_saveabs chk_uninit chk_noret chk_dlock chk_birq files =
 	Log.color_on();
 	Log.set_log_level (log_level_of_int verbosity);
 	Opts.Set.gc_stats flag_gcstats;
+	Opts.Set.save_abs flag_saveabs;
 	let checks = { chk_uninit; chk_noret; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
@@ -79,6 +85,10 @@ let verbose =
 let flag_gcstats =
 	let doc = "Print GC stats after analyzing a C file." in
 	Arg.(value & flag & info ["gc-stats"] ~doc)
+
+let flag_saveabs =
+	let doc = "Save effect abstraction to an .abs file." in
+	Arg.(value & flag & info ["save-abs"] ~doc)
 
 let check_uninit =
 	let doc = "Check for uses of variables before initialization" in
@@ -99,7 +109,11 @@ let check_birq =
 let cmd =
 	let doc = "Effect-based analysis of C programs" in
 	let man = [ `S "DESCRIPTION"; `P "Author: Iago Abal <mail@iagoabal.eu>."; ] in
-	Term.(pure infer_files $ verbose $ flag_gcstats $ check_uninit $ check_noret $ check_dlock $ check_birq $ files),
+	Term.(pure infer_files
+		$ verbose
+		$ flag_gcstats $ flag_saveabs
+		$ check_uninit $ check_noret $ check_dlock $ check_birq
+		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man
 
 let () = match Term.eval cmd with `Error _ -> exit 1 | _ -> exit 0

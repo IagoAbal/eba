@@ -557,12 +557,4 @@ let of_file (file : Cil.file) :FileAbs.t =
 		Cil.(file.globals)
 	in
 	FileAbs.finalize fileAbs;
-	if Log.get_log_level () >= Log.INFO
-	then begin
-		Printf.eprintf "\n========== BEGIN %s: effect abstraction ==========\n"
-			Cil.(file.fileName);
-		FileAbs.eprint fileAbs;
-		Printf.eprintf "\n==========  END  %s: effect abstraction ==========\n\n"
-			Cil.(file.fileName);
-	end;
 	fileAbs
