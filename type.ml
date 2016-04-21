@@ -76,13 +76,20 @@ module rec Shape : sig
 
 	and field = { finfo : Cil.fieldinfo; fshape : t }
 
+	module ShapeVar : sig
+		type t = var
+		val compare : t -> t -> int
+		val equal : t -> t -> bool
+		val hash : t -> int
+	end
+
 	val fv_of : t -> Vars.t
 
 	val fv_of_fields : fields -> Vars.t
 
-	val free_in : Var.t -> t -> bool
+	val free_in : var -> t -> bool
 
-	val not_free_in : Var.t -> t -> bool
+	val not_free_in : var -> t -> bool
 
 	val bv_of : t -> Vars.t
 
@@ -213,7 +220,7 @@ module rec Shape : sig
 			let z_fv = fv_of z in
 			(* THINK: This pattern should be abstracted *)
 			if Region.is_meta r
-			then Vars.add (Var.Region r) z_fv
+			then Vars.add_region r z_fv
 			else z_fv
 
 	and fv_of_var :var -> Vars.t = function
@@ -222,7 +229,7 @@ module rec Shape : sig
 		(* THINK: we go into meta variables to be more robust, should we? *)
 		| Meta (_,ma) as a ->
 			let fvs = Meta.fv_with fv_of ma in
-			Vars.add (Var.Shape a) fvs
+			Vars.add_shape a fvs
 
 	and fv_of_list (zs :t list) :Vars.t =
     	let fvs = List.map fv_of zs in
@@ -233,7 +240,7 @@ module rec Shape : sig
 		let res_fv = fv_of range in
 		let ffv = Vars.union dom_fv res_fv in
 		if EffectVar.is_meta effects
-		then Vars.add (Var.Effect effects) ffv
+		then Vars.add_effect effects ffv
 		else ffv
 
 	and fv_of_struct s = s.sargs |> Array.Cap.enum |> Enum.map fv_of_sarg |> Vars.enum_sum
@@ -243,18 +250,18 @@ module rec Shape : sig
 		| Z z -> fv_of z
 		| R r ->
 			if Region.is_meta r
-			then Vars.singleton (Var.Region r)
+			then Vars.just_region r
 			else Vars.none
 		| F f ->
 			if EffectVar.is_meta f
-			then Vars.singleton (Var.Effect f)
+			then Vars.just_effect f
 			else Vars.none
 
 	and fv_of_fields fs = Vars.sum (List.map fv_of_field fs)
 
 	and fv_of_field {fshape} = fv_of fshape
 
-	let free_in a z = Vars.mem a (fv_of z)
+	let free_in a z = Vars.mem_shape a (fv_of z)
 
 	let not_free_in a z = not(free_in a z)
 
@@ -269,12 +276,12 @@ module rec Shape : sig
 			let z_bv = bv_of z in
 			(* THINK: This pattern should be abstracted *)
 			if not (Region.is_meta r)
-			then Vars.add (Var.Region r) z_bv
+			then Vars.add_region r z_bv
 			else z_bv
 
 	and bv_of_var :var -> Vars.t = function
 		(* surely, if it's bound then it cannot be free :-) *)
-		| Bound _  as a -> Vars.singleton (Var.Shape a)
+		| Bound _  as a -> Vars.just_shape a
 		(* THINK: we go into meta variables to be more robust, should we? *)
 		| Meta (_,ma)   -> Meta.map_default bv_of Vars.empty ma
 
@@ -287,7 +294,7 @@ module rec Shape : sig
 		let res_bv = bv_of range in
 		let ffv = Vars.union dom_bv res_bv in
 		if not (EffectVar.is_meta effects)
-		then Vars.add (Var.Effect effects) ffv
+		then Vars.add_effect effects ffv
 		else ffv
 
 	and bv_of_struct s = s.sargs |> Array.Cap.enum |> Enum.map bv_of_sarg |> Vars.enum_sum
@@ -297,11 +304,11 @@ module rec Shape : sig
 		| Z z -> bv_of z
 		| R r ->
 			if not (Region.is_meta r)
-			then Vars.singleton (Var.Region r)
+			then Vars.just_region r
 			else Vars.none
 		| F f ->
 			if not (EffectVar.is_meta f)
-			then Vars.singleton (Var.Effect f)
+			then Vars.just_effect f
 			else Vars.none
 
 	and bv_of_fields fs = Vars.sum (List.map bv_of_field fs)
@@ -331,6 +338,13 @@ module rec Shape : sig
 	let uniq_of = function
 		| Meta(u,_) -> u
 		| Bound u   -> u
+
+	module ShapeVar = struct
+		type t = var
+		let compare = Utils.compare_on uniq_of
+		let equal = Utils.equal_on uniq_of
+		let hash = Hashtbl.hash % uniq_of
+	end
 
 	let is_meta = function
 		| Meta  _ -> true
@@ -741,6 +755,10 @@ and Region : sig
 
 	val compare : t -> t -> int
 
+	val equal : t -> t -> bool
+
+	val hash : t -> int
+
 	val bound : unit -> t
 
 	val meta : unit -> t
@@ -773,7 +791,9 @@ end = struct
 
 	let compare = Utils.compare_on uniq_of
 
-	let equals r1 r2 = compare r1 r2 = 0
+	let equal = Utils.equal_on uniq_of
+
+	let hash = Hashtbl.hash % uniq_of
 
 	let bound () : Region.t =
 		let id = Uniq.fresh() in
@@ -804,7 +824,7 @@ end = struct
 	(* TODO: Refactor code in Meta *)
 	let rec (=~) r1 r2 :unit =
 		assert(is_meta r2);
-		if equals r1 r2
+		if equal r1 r2
 		then ()
 		else
 		match r1 with
@@ -863,6 +883,10 @@ and EffectVar : sig
 	val uniq_of : t -> Uniq.t
 
 	val compare : t -> t -> int
+
+	val equal : t -> t -> bool
+
+	val hash : t -> int
 
 	val bound_with : lb -> t
 
@@ -938,12 +962,14 @@ end = struct
 
 	let compare = Utils.compare_on uniq_of
 
-	let equals f1 f2 = compare f1 f2 = 0
+	let equal = Utils.equal_on uniq_of
+
+	let hash = Hashtbl.hash % uniq_of
 
 	let fv_of f =
 		let lb_fv = Effects.fv_of (lb_of f) in
 		if is_meta f
-		then Vars.add (Var.Effect f) lb_fv
+		then Vars.add_effect f lb_fv
 		else lb_fv
 
 	let meta_with lb :t =
@@ -985,7 +1011,7 @@ end = struct
 	let rec (=~) f1 f2 :unit =
 		assert (is_meta f1);
 		assert (is_meta f2);
-		if equals f1 f2
+		if equal f1 f2
 		then ()
 		else
 			unify_meta (get_meta f1) (zonk f2)
@@ -1338,7 +1364,7 @@ and Effects : sig
 		let ff = fs |> enum_may |> List.of_enum in
 		let xss = ff |> List.map (function
 			| Var x    -> EffectVar.fv_of x
-			| Mem(_,r) when Region.is_meta r -> Vars.singleton (Var.Region r)
+			| Mem(_,r) when Region.is_meta r -> Vars.just_region r
 			| _other   -> Vars.none
 		) in
 		Vars.sum xss
@@ -1644,54 +1670,149 @@ and Var : sig
 
 	end
 
+(* NB: some operations could be performed in parallel for each subset of variables! *)
 and Vars : sig
 	type t
 	val none : t
 	val empty : t
-	val singleton : Var.t -> t
+	val just_shape : Shape.var -> t
+	val just_region : Region.t -> t
+	val just_effect : EffectVar.t -> t
 	val is_empty : t -> bool
-	val mem : Var.t -> t -> bool
+	val mem_shape : Shape.var -> t -> bool
+	val mem_region : Region.t -> t -> bool
+	val mem_effect : EffectVar.t -> t -> bool
 	val subset : t -> t -> bool
-	val for_all : (Var.t -> bool) -> t -> bool
+	val for_all : (Shape.var -> bool) -> (Region.t -> bool) -> (EffectVar.t -> bool) -> t -> bool
 	val cardinal : t -> int
-	val add : Var.t -> t -> t
-	val remove : Var.t -> t -> t
+	val add_shape : Shape.var -> t -> t
+	val add_region : Region.t -> t -> t
+	val add_effect : EffectVar.t -> t -> t
+	val remove_region : Region.t -> t -> t
 	val (+) : t -> t -> t
 	val union : t -> t -> t
 	val diff : t -> t -> t
 	val sum : t list -> t
 	val enum_sum : t Enum.t -> t
-	val filter : (Var.t -> bool) -> t -> t
+	val filter : (Shape.var -> bool) -> (Region.t -> bool) -> (EffectVar.t -> bool) -> t -> t
+	val filter_regions : t -> t
+	val filter_effects : t -> t
 	val zonk_lb : t -> t
 	(* val zonk_fv_of : t -> t *)
+	val var_enum : t -> VarEnum.t
+	val of_var_enum : VarEnum.t -> t
 	val enum : t -> Var.t Enum.t
 	val of_enum : Var.t Enum.t -> t
 	val pp : t -> PP.doc
 	val to_string : t -> string
 	end
 	= struct
-		module VarSet = Set.Make(Var)
-		type t = VarSet.t
-		let none = VarSet.empty
-		let empty = VarSet.empty
-		let singleton = VarSet.singleton
-		let is_empty = VarSet.is_empty
-		let mem = VarSet.mem
-		let subset = VarSet.subset
-		let for_all = VarSet.for_all
-		let cardinal = VarSet.cardinal
-		let add = VarSet.add
-		let remove = VarSet.remove
-		let (+) = VarSet.union
+		module ShapeSet  = Set.Make(Shape.ShapeVar)
+		module RegionSet = Set.Make(Region)
+		module EffectSet = Set.Make(EffectVar)
+
+		type t = {
+			shapes  : ShapeSet.t;
+			regions : RegionSet.t;
+			effects : EffectSet.t;
+		}
+
+		let empty = {
+			shapes  = ShapeSet.empty;
+			regions = RegionSet.empty;
+			effects = EffectSet.empty;
+		}
+
+		let none = empty
+
+		let just_shape  z = { empty with shapes  = ShapeSet.singleton z }
+
+		let just_region r = { empty with regions = RegionSet.singleton r }
+
+		let just_effect f = { empty with effects = EffectSet.singleton f }
+
+		let is_empty {shapes; regions; effects} =
+			ShapeSet.is_empty shapes && RegionSet.is_empty regions && EffectSet.is_empty effects
+
+		let mem_shape  z {shapes}  = ShapeSet.mem  z shapes
+
+		let mem_region r {regions} = RegionSet.mem r regions
+
+		let mem_effect f {effects} = EffectSet.mem f effects
+
+		let subset x y =
+			ShapeSet.subset x.shapes y.shapes
+			&& RegionSet.subset x.regions y.regions
+			&& EffectSet.subset x.effects y.effects
+
+		let for_all f g h {shapes; regions; effects} =
+			ShapeSet.for_all f shapes
+			&& RegionSet.for_all g regions
+			&& EffectSet.for_all h effects
+
+		let cardinal {shapes; regions; effects} =
+			ShapeSet.cardinal shapes
+			+ RegionSet.cardinal regions
+			+ EffectSet.cardinal effects
+
+		let add_shape z x =
+			{ x with shapes = ShapeSet.add z x.shapes }
+
+		let add_region r x =
+			{ x with regions = RegionSet.add r x.regions }
+
+		let add_effect f x =
+			{ x with effects = EffectSet.add f x.effects }
+
+		let remove_region r x =
+			{ x with regions = RegionSet.remove r x.regions }
+
+		let (+) x y =
+			{ shapes  = ShapeSet.union x.shapes y.shapes
+			; regions = RegionSet.union x.regions y.regions
+			; effects = EffectSet.union x.effects y.effects
+			}
+
 		let union = (+)
-		let diff = VarSet.diff
-		let sum = List.fold_left VarSet.union VarSet.empty
+
+		let diff x y =
+			{ shapes  = ShapeSet.diff x.shapes y.shapes
+			; regions = RegionSet.diff x.regions y.regions
+			; effects = EffectSet.diff x.effects y.effects
+			}
+
+		let sum = List.fold_left union empty
+
 		let enum_sum = Enum.fold union none
-		let filter = VarSet.filter
-		let zonk_lb = VarSet.map Var.zonk_lb
-		let enum = VarSet.enum
-		let of_enum = VarSet.of_enum
-		let pp x = PP.braces (PP.space_sep (List.map Var.pp (VarSet.elements x)))
+
+		let filter f g h {shapes; regions; effects} =
+			{ shapes  = ShapeSet.filter f shapes
+			; regions = RegionSet.filter g regions
+			; effects = EffectSet.filter h effects
+			}
+
+		let filter_regions x = { empty with regions = x.regions }
+
+		let filter_effects x = { empty with effects = x.effects }
+
+		let zonk_lb vs =
+			{ vs with effects = EffectSet.map EffectVar.zonk vs.effects }
+
+		let var_enum {shapes; regions; effects} =
+			VarEnum.make (ShapeSet.enum shapes) (RegionSet.enum regions) (EffectSet.enum effects)
+
+		let of_var_enum e =
+			{ shapes  = ShapeSet.of_enum (VarEnum.shapes e)
+			; regions = RegionSet.of_enum (VarEnum.regions e)
+			; effects = EffectSet.of_enum (VarEnum.effects e)
+			}
+
+		let enum = VarEnum.enum % var_enum
+
+		let of_enum = of_var_enum % VarEnum.of_enum
+
+		let pp x = PP.braces (PP.space_sep (List.of_enum (Enum.map Var.pp (VarEnum.enum (var_enum x)))))
+
 		let to_string = PP.to_string % pp
 	end
 
@@ -1707,6 +1828,8 @@ and Subst : sig
 	val mk : (Var.t * 'a) list -> 'a t
 
 	val of_enum : (Var.t * 'a) Enum.t -> 'a t
+
+	val of_enums : (Shape.var * Shape.var) Enum.t -> (Region.t * Region.t) Enum.t -> (EffectVar.t * EffectVar.t) Enum.t -> Var.t t
 
 	val find : Var.t -> 'a t -> 'a option
 
@@ -1729,6 +1852,13 @@ and Subst : sig
 
 	let of_enum = VarMap.of_enum
 
+	let of_enums zs rs fs =
+		let open Enum in
+		let zs' = map (fun (a1,a2) -> Var.(Shape a1,Shape a2)) zs in
+		let rs' = map (fun (r1,r2) -> Var.(Region r1,Region r2)) rs in
+		let fs' = map (fun (f1,f2) -> Var.(Effect f1,Effect f2)) fs in
+		VarMap.of_enum (append zs' (append rs' fs'))
+
 	let find = VarMap.Exceptionless.find
 
 	let find_default v x s =
@@ -1745,7 +1875,7 @@ and Subst : sig
 (* Subeffecting Constraints *)
 
 and Constraints : sig
-	type t = Vars.t
+	type t = Vars.t (* TODO: Maybe EffectVarSet.t ? *)
 	val none : t
 	val add : EffectVar.t -> Effects.t -> t -> t
 	val (+) : t -> t -> t
@@ -1762,7 +1892,7 @@ and Constraints : sig
 
     let add x f k =
 		let _ = EffectVar.add_lb (Effects.remove (Effects.Var x) f) x in
-		Vars.add (Var.Effect x) k
+		Vars.add_effect x k
 
     let (+) = Vars.(+)
 
@@ -1773,7 +1903,7 @@ and Constraints : sig
 	end
 
 and Scheme : sig
-	type 'a t = { vars : (Var.t,[`Read]) Array.Cap.t; body : 'a }
+	type 'a t = { vars : QV.t; body : 'a }
 	val instantiate : Shape.t t -> Shape.t * Constraints.t
 	val quantify : Vars.t -> Shape.t -> Shape.t t
 	val ref_of : Region.t -> Shape.t t -> Shape.t t
@@ -1790,39 +1920,30 @@ and Scheme : sig
 	val to_string : Shape.t t -> string
 end = struct
 
-	type 'a t = { vars : (Var.t,[`Read]) Array.Cap.t; body : 'a }
+	type 'a t = { vars : QV.t; body : 'a }
 
 	let instantiate :Shape.t t -> Shape.t * Constraints.t =
 		fun { vars; body = shp} ->
-			let qvs = Array.Cap.enum vars in
-			let qvs_mtvs = qvs |> Enum.map (fun qv ->
-				let mtv = Var.meta_of qv in
-				qv, mtv
-			) in
-			let s = Subst.of_enum qvs_mtvs in
+			let s = QV.instantiate vars in
 			let shp' = Shape.vsubst s shp in
 			assert(Vars.is_empty (Shape.bv_of shp'));
-			let k = Vars.filter Var.is_effect (Shape.fv_of shp') in
+			let k = Vars.filter_effects (Shape.fv_of shp') in
 			shp', k
 
-	(* THINK: [let xs = Vars.map f vs] to avoid intermediate lists *)
 	let quantify vs z =
-		let ys = Vars.enum vs in
-		let xs = ys |> Enum.map (fun y ->
-			let x = Var.bound_of y in
-			Var.write y x;
-			x
-		) |> Array.Cap.of_enum in
-		(* CAREFUL with the order of effects, all writes must take place before zonking. *)
-		let xs' = xs |> Array.Cap.enum |> Enum.map Var.zonk_lb |> Array.Cap.of_enum in
+		(* Note that vs are meta variables that occur in z, and QV-instantiation
+		 * generates an implicit substitution vs -> qv by side-effects ...
+		 *)
+		let qv = QV.quantify vs in
+		(* ... so we need to zonk to apply it to z. *)
 		let z' = Shape.zonk z in
-		{ vars = xs'; body = z' }
+		{ vars = qv; body = z' }
 
 	let ref_of r sch =
 		{ sch with body = Shape.Ref(r,sch.body) }
 
 	let regions_in sch = Shape.regions_in sch.body
-	let of_shape z = { vars = Array.Cap.of_list []; body = z }
+	let of_shape z = { vars = QV.empty; body = z }
 	let of_varinfo x = of_shape (Shape.of_varinfo x)
 	let effects_of_fun sch =
 		let _,f,_ = Shape.get_ref_fun sch.body in
@@ -1835,10 +1956,187 @@ end = struct
 
 	(* TODO: refactor ... pretty printing *)
 	let pp {vars; body} =
-		let vars_doc = Utils.pp_upto 10 PP.space Var.pp (Array.Cap.enum vars) in
+		let vars_doc = QV.pp vars in
 		PP.(!^ "forall" ++ vars_doc + !^ "." ++ Shape.pp body)
 
 	let to_string = PP.to_string % pp
+end
+
+and VarEnum : sig
+
+	type t
+
+	val make : Shape.var Enum.t -> Region.t Enum.t -> EffectVar.t Enum.t -> t
+
+	val shapes : t -> Shape.var Enum.t
+
+	val regions : t -> Region.t Enum.t
+
+	val effects : t -> EffectVar.t Enum.t
+
+	val enum : t  -> Var.t Enum.t
+
+	val of_enum : Var.t Enum.t -> t
+
+	val map : (Shape.var -> Shape.var) -> (Region.t -> Region.t) -> (EffectVar.t -> EffectVar.t) -> t -> t
+
+	val force : t -> unit
+
+	val zonk_lb : t -> t
+
+end = struct
+
+	type t = {
+		shapes  : Shape.var Enum.t;
+		regions : Region.t Enum.t;
+		effects : EffectVar.t Enum.t
+	}
+
+	let make shapes regions effects = {shapes; regions; effects}
+
+	let shapes e = e.shapes
+
+	let regions e = e.regions
+
+	let effects e = e.effects
+
+	let enum {shapes; regions; effects} =
+		let zs = Enum.map (fun z -> Var.Shape z) shapes in
+		let rs = Enum.map (fun r -> Var.Region r) regions in
+		let fs = Enum.map (fun f -> Var.Effect f) effects in
+		Enum.(append zs (append rs fs))
+
+	let of_enum vs =
+		let zs, not_zs = Enum.partition Var.is_shape vs in
+		let rs, fs     = Enum.partition Var.is_region not_zs in
+		{ shapes  = Enum.map Var.to_shape zs
+		; regions = Enum.map Var.to_region rs
+		; effects = Enum.map Var.to_effect fs
+		}
+
+	let map f g h {shapes; regions; effects} =
+		{ shapes  = Enum.map f shapes
+		; regions = Enum.map g regions
+		; effects = Enum.map h effects
+		}
+
+	let force {shapes; regions; effects} =
+		let open Enum in
+		force shapes;
+		force regions;
+		force effects
+
+	let zonk_lb x =
+		force x; (* Be sure that all writes are performed. *)
+		{ x with effects = Enum.map EffectVar.zonk x.effects }
+
+end
+
+and QV : sig
+
+	type t
+
+	val empty : t
+
+	val length : t -> int
+
+	val enum_shapes : t -> Shape.var Enum.t
+
+	val enum_regions : t -> Region.t Enum.t
+
+	val enum_effects : t -> EffectVar.t Enum.t
+
+	val var_enum : t -> VarEnum.t
+
+	val of_list : Var.t list -> t
+
+	val pp : t -> PP.doc
+
+	val instantiate : t -> Var.t Subst.t
+
+	(** Assign fresh QVs to the given (zonked) meta variables and return the QVs. *)
+	val quantify : Vars.t -> t
+
+end = struct
+
+	module A = Array.Cap
+
+	type t = {
+		shapes  : (Shape.var,[`Read]) A.t;
+		regions : (Region.t,[`Read]) A.t;
+		effects : (EffectVar.t,[`Read]) A.t;
+	}
+
+	let empty = {
+		shapes  = A.of_list [];
+		regions = A.of_list [];
+		effects = A.of_list [];
+	}
+
+	let length {shapes; regions; effects} =
+		A.(length shapes + length regions + length effects)
+
+	let enum_shapes qv = A.enum qv.shapes
+
+	let enum_regions qv = A.enum qv.regions
+
+	let enum_effects qv = A.enum qv.effects
+
+	let var_enum qv =
+		VarEnum.make (enum_shapes qv) (enum_regions qv) (enum_effects qv)
+
+	let of_var_enum e = {
+		shapes  = A.of_enum (VarEnum.shapes e);
+		regions = A.of_enum (VarEnum.regions e);
+		effects = A.of_enum (VarEnum.effects e);
+	}
+
+	let of_enum vs =
+		let zs, not_zs = Enum.partition Var.is_shape vs in
+		let rs, fs     = Enum.partition Var.is_region not_zs in
+		{ shapes  = A.of_enum (Enum.map Var.to_shape zs)
+		; regions = A.of_enum (Enum.map Var.to_region rs)
+		; effects = A.of_enum (Enum.map Var.to_effect fs)
+		}
+
+	let of_list = of_enum % List.enum
+
+	let pp qv =
+		Utils.pp_upto 10 PP.space Var.pp (VarEnum.enum (var_enum qv))
+
+	let generic_inst enum_of meta_of qv =
+		enum_of qv |> Enum.map (fun a ->
+			let ma = meta_of a in
+			a, ma
+		)
+
+	let instantiate qv =
+		let z_ss = qv |> generic_inst enum_shapes (fun _ -> Shape.meta_var()) in
+		let r_ss = qv |> generic_inst enum_regions (fun _ -> Region.meta()) in
+		let f_ss = qv |> generic_inst enum_effects EffectVar.(meta_with % lb_of) in
+		Subst.of_enums z_ss r_ss f_ss
+
+	let quantify vs =
+		let ys = Vars.var_enum vs in
+		let qz y =
+			let x = Shape.bound_var() in
+			Shape.write_var y (Shape.Var x);
+			x
+		in
+		let qr y =
+			let x = Region.bound() in
+			Region.write y x;
+			x
+		in
+		let qf y =
+			let lb = EffectVar.lb_of y in
+			let x = EffectVar.bound_with lb in
+			EffectVar.write y x;
+			x
+		in
+		let xs = ys |> VarEnum.map qz qr qf in
+		xs |> VarEnum.zonk_lb |> of_var_enum
+
 end
 
 module E = Effects
@@ -1962,7 +2260,7 @@ module Unify =
 	and unify_unbound_var a = function
 		| Var b when Shape.(eq_var a b) ->
 			ok
-		| z when Shape.free_in (Var.Shape a) z ->
+		| z when Shape.free_in a z ->
 			Log.warn "Cyclic shape: %s ~ %s" Shape.(to_string (Var a)) (Shape.to_string z);
 			ok (* BUT UNSOUND: raise(Occurs_check(a,z)) *)
 		| z ->

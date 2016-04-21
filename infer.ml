@@ -32,9 +32,9 @@ let generalize_fun env_fv k r z fnAbs
 	  (* Prevents incorrect quantification over the function's code region [r]
 	   * in case of a function that calls itself.
 	   *)
-	let vs = Vars.remove (Var.Region rr) vs' in
+	let vs = Vars.remove_region rr vs' in
 	let k1 = K.minus k vs in
-	assert(Vars.for_all Var.is_meta vs);
+	assert(Vars.for_all Shape.is_meta Region.is_meta EffectVar.is_meta vs);
 	let sch = Scheme.(ref_of rr (quantify vs zz)) in
 	FunAbs.zonk fnAbs;
 	sch, k1
@@ -43,8 +43,8 @@ let generalize_fun env_fv k r z fnAbs
 (* THINK: We can fuse zonk and filter with filter_map *)
 let observe env_fv ef :E.t =
     let is_observable = function
-		| E.Var x     -> Vars.mem (Var.Effect x) env_fv
-		| E.Mem(_k,r) -> Vars.mem (Var.Region r) env_fv
+		| E.Var x     -> Vars.mem_effect x env_fv
+		| E.Mem(_k,r) -> Vars.mem_region r env_fv
 		| _other      -> true
 	in
 	let open Effects in
@@ -434,7 +434,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	 *)
 	let env_nofn_fv2 =
 		let open Vars in
-		if mem (Var.Effect f) env_nofn_fv
+		if mem_effect f env_nofn_fv
 		then union env_nofn_fv Effects.(fv_of (zonk ff'))
 		else env_nofn_fv
 	in
