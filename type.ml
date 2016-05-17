@@ -65,12 +65,10 @@ module rec Shape : sig
 	 *)
 	and cstruct =
 		{         sinfo   : Cil.compinfo
-		; mutable sargs   : (struct_arg, [`Read]) Array.Cap.t
-		; mutable sparams : (Var.t, [`Read]) Array.Cap.t
+		; mutable sargs   : TypeArgs.t
+		; mutable sparams : QV.t
 		; mutable fields  : fields
 		}
-
-	and struct_arg = Z of t | R of Region.t | F of EffectVar.t
 
 	and fields = field list
 
@@ -149,9 +147,9 @@ module rec Shape : sig
 	(** Look up a field in a struct shape. *)
 	val field : cstruct -> name -> t
 
-	val vsubst_var : Var.t Subst.t -> var -> var
+	val vsubst_var : Subst.t -> var -> var
 
-	val vsubst : Var.t Subst.t -> t -> t
+	val vsubst : Subst.t -> t -> t
 
 	(* THINK: Maybe re-add folds when I decide how to handle cstruct *)
 
@@ -193,21 +191,14 @@ module rec Shape : sig
 
 	and cstruct =
 		{         sinfo   : Cil.compinfo
-		; mutable sargs   : (struct_arg, [`Read]) Array.Cap.t
-		; mutable sparams : (Var.t, [`Read]) Array.Cap.t
+		; mutable sargs   : TypeArgs.t
+		; mutable sparams : QV.t
 		; mutable fields  : fields
 		}
-
-	and struct_arg = Z of t | R of Region.t | F of EffectVar.t
 
 	and fields = field list
 
 	and field = { finfo : Cil.fieldinfo; fshape : t }
-
-	let sarg_of_var = function
-		| Var.Shape  a -> Z (Var a)
-		| Var.Region r -> R r
-		| Var.Effect f -> F f
 
 	(** Bound variables are NOT free by definition! *)
 	let rec fv_of :t -> Vars.t = function
@@ -243,19 +234,7 @@ module rec Shape : sig
 		then Vars.add_effect effects ffv
 		else ffv
 
-	and fv_of_struct s = s.sargs |> Array.Cap.enum |> Enum.map fv_of_sarg |> Vars.enum_sum
-
-	(* TODO: Use Region.fv_of etc *)
-	and fv_of_sarg = function
-		| Z z -> fv_of z
-		| R r ->
-			if Region.is_meta r
-			then Vars.just_region r
-			else Vars.none
-		| F f ->
-			if EffectVar.is_meta f
-			then Vars.just_effect f
-			else Vars.none
+	and fv_of_struct s = TypeArgs.fv_of s.sargs
 
 	and fv_of_fields fs = Vars.sum (List.map fv_of_field fs)
 
@@ -297,19 +276,7 @@ module rec Shape : sig
 		then Vars.add_effect effects ffv
 		else ffv
 
-	and bv_of_struct s = s.sargs |> Array.Cap.enum |> Enum.map bv_of_sarg |> Vars.enum_sum
-
-	(* TODO: Use Region.bv_of etc *)
-	and bv_of_sarg = function
-		| Z z -> bv_of z
-		| R r ->
-			if not (Region.is_meta r)
-			then Vars.just_region r
-			else Vars.none
-		| F f ->
-			if not (EffectVar.is_meta f)
-			then Vars.just_effect f
-			else Vars.none
+	and bv_of_struct s = TypeArgs.bv_of s.sargs
 
 	and bv_of_fields fs = Vars.sum (List.map bv_of_field fs)
 
@@ -387,12 +354,8 @@ module rec Shape : sig
 		PP.(parens (comma_sep (List.map pp args) + pp_varargs))
 	and pp_struct s =
 		let open PP in
-		let args_doc = Utils.pp_upto 10 PP.comma pp_sarg (Array.Cap.enum s.sargs) in
+		let args_doc = TypeArgs.pp_upto s.sargs 10 in
 		!^ "struct" ++ !^ Cil.(s.sinfo.cname) + angle_brackets(args_doc)
-	and pp_sarg = function
-		| Z z -> pp z
-		| R r -> Region.pp r
-		| F f -> EffectVar.pp f
 	and pp_fields fs = PP.(separate (!^ "; ") (List.map pp_field fs))
 	and pp_field {finfo;fshape} = PP.(!^ Cil.(finfo.fname) ++ colon ++ pp fshape)
 
@@ -420,8 +383,8 @@ module rec Shape : sig
 	 * that the shapes of the fields have been generalized correctly,
 	 * and thus there must not be any free meta variable in them. *)
 	and lint_struct_aux d (s :cstruct) :unit =
-		assert(Array.Cap.length s.sargs = Array.Cap.length s.sparams);
-		assert(Array.Cap.for_all (not % Var.is_meta) s.sparams);
+		assert(TypeArgs.count s.sargs = QV.length s.sparams);
+		assert(QV.for_all (not % Shape.is_meta) (not % Region.is_meta) (not % EffectVar.is_meta) s.sparams);
 		let ffvs = fv_of_fields s.fields in
 		let valid_params = Vars.is_empty ffvs in
 		if not valid_params then begin
@@ -452,7 +415,7 @@ module rec Shape : sig
 
 	(* Instantiate a parameterized struct shape with fresh meta variables. *)
 	let inst_struct s =
-		let new_args = s.sparams |> Array.Cap.map (sarg_of_var % Var.meta_of) in
+		let new_args = s.sparams |> QV.instantiate |> Tuple.Tuple2.first in
 		let s' = { s with sargs = new_args } in
 		lint_struct s';
 		s'
@@ -482,12 +445,8 @@ module rec Shape : sig
 	and zonk_dom_aux cache d = List.map (zonk_aux cache) d
 	and zonk_struct_aux cache s =
 		match List.Exceptionless.assoc Cil.(s.sinfo.cname) cache with
-		| None -> { s with sargs = Array.Cap.map zonk_sarg s.sargs }
+		| None -> { s with sargs = TypeArgs.zonk s.sargs }
 		| Some sz -> sz
-	and zonk_sarg = function
-		| Z z -> Z (zonk z)
-		| R r -> R (Region.zonk r)
-		| F f -> F (EffectVar.zonk f)
 	and zonk_fields_aux cache fs = List.map (zonk_field_aux cache) fs
 	and zonk_fields fs = zonk_fields_aux [] fs
 	and zonk_field_aux cache ({fshape} as field) =
@@ -538,7 +497,7 @@ module rec Shape : sig
 				 * a dummy struct. See Struct module.
 				 *)
 				Log.error "of_typ: struct not found in cache: %s" name;
-				{ sinfo = ci; sargs = Array.Cap.of_list []; sparams = Array.Cap.of_list []; fields = [] }
+				{ sinfo = ci; sargs = TypeArgs.empty; sparams = QV.empty; fields = [] }
 				(* Error.panic_with("struct not in cache: " ^ name) *)
 			| Some z -> z
 		end
@@ -573,8 +532,8 @@ module rec Shape : sig
 		 *)
 		let mk_dummy ci =
 			{ sinfo   = ci;
-			  sargs   = Array.Cap.of_list [];
-			  sparams = Array.Cap.of_list [];
+			  sargs   = TypeArgs.empty;
+			  sparams = QV.empty;
 			  fields  = []
 			}
 		in
@@ -591,20 +550,8 @@ module rec Shape : sig
 		let fvs =
 			auxs |> List.enum |> Enum.map (fun aux -> fv_of_fields (aux.fields)) |> Vars.enum_sum
 		in
-		let params =
-			let ys = Vars.enum fvs in
-			let xs = ys |> Enum.map (fun y ->
-				let x = Var.bound_of y in
-				Var.write y x;
-				x
-			) |> Array.Cap.of_enum in
-			assert(xs |> Array.Cap.for_all (fun x ->
-				not (Var.is_effect x)
-				|| (Effects.is_empty (EffectVar.lb_of (Var.to_effect x)))
-				));
-			xs (* NB: lb's must be empty so no need to zonk_lb here *)
-		in
-		let sargs = Array.Cap.map sarg_of_var params in
+		let params = QV.quantify fvs in (* NB: lb must be empty so no need to zonk_lb here *)
+		let sargs = params |> QV.var_enum |> TypeArgs.of_var_enum in
 		(* STEP 3: Set all the [sparams] and [sargs] pointers appropriately,
 		 * and zonk fields shapes.
 		 *)
@@ -665,19 +612,14 @@ module rec Shape : sig
 		| Struct z -> Struct (vsubst_struct s z)
 		| Ref(r,z) -> Ref (Region.vsubst s r,vsubst s z)
 	and vsubst_var s a =
-		let x = Var.Shape a in
-		Var.to_shape (Subst.find_default x x s)
+		Subst.find_shape_def a a s
     and vsubst_fun s = fun { domain; effects; range; varargs } ->
     	let d' = List.map (vsubst s) domain in
     	let f' = EffectVar.vsubst s effects in
     	let r' = vsubst s range in
     	{ domain = d'; effects = f'; range = r'; varargs }
 	and vsubst_struct s z =
-		{ z with sargs = Array.Cap.map (vsubst_sarg s) z.sargs }
-	and vsubst_sarg s = function
-		| Z z -> Z (vsubst s z)
-		| R r -> R (Region.vsubst s r)
-		| F f -> F (EffectVar.vsubst s f)
+		{ z with sargs = TypeArgs.vsubst s z.sargs }
 	and vsubst_fields s fs = List.map (vsubst_field s) fs
 	and vsubst_field s ({fshape} as field) =
 		{field with fshape = vsubst s fshape}
@@ -688,16 +630,8 @@ module rec Shape : sig
 	 * a second shape argument.
 	 *)
 	let struct_inst (sz :cstruct) : t -> t =
-		let xs = Array.Cap.enum sz.sargs |> Enum.map (function
-			| Z (Var a) -> Var.Shape a
-			| Z z -> let a = meta_var() in
-					  write_var a z;
-					  Var.Shape a
-			| R r -> Var.Region r
-			| F f -> Var.Effect f
-		)
-		in
-		let s = Subst.of_enum (Enum.combine(Array.Cap.enum sz.sparams,xs)) in
+		let xs = TypeArgs.var_enum sz.sargs in
+		let s = Subst.of_enum_pair (QV.var_enum sz.sparams) xs in
 		fun z ->
 			let z' = vsubst s z in
 			zonk_aux [] z'
@@ -729,11 +663,7 @@ module rec Shape : sig
 	(* THINK: Should I turn it into PP.tuple ~pp ? *)
 	and regions_in_args args = args |> List.map regions_in |> Regions.sum
 	and regions_in_struct s =
-		s.sargs |> Array.Cap.enum |> Enum.map regions_in_sarg |> Regions.sum_enum
-	and regions_in_sarg = function
-		| Z z -> regions_in z
-		| R r -> Regions.singleton r
-		| F _ -> Regions.none
+		TypeArgs.regions_in s.sargs
 
 	let fully_read z = z
 		|> regions_in
@@ -767,9 +697,11 @@ and Region : sig
 
 	val zonk : t -> t
 
+	val fv_of : t -> Vars.t
+
 	val (=~) : t -> t -> unit
 
-	val vsubst : Var.t Subst.t -> t -> t
+	val vsubst : Subst.t -> t -> t
 
 	val pp : t -> PP.doc
 
@@ -816,6 +748,11 @@ end = struct
 		| Meta(id,mr) as r ->
 			Option.(Meta.zonk_with zonk mr |? r)
 
+	let fv_of r =
+		if is_meta r
+		then Vars.just_region r
+		else Vars.none
+
 	let unify_unbound id1 mr1 = function
 		| Meta(id2,_) when id1 = id2 -> ()
 		| Bound _ -> Error.panic()
@@ -838,8 +775,7 @@ end = struct
 		| ___ -> Error.panic()
 
 	let vsubst s r =
-		let x = Var.Region r in
-		Var.to_region (Subst.find_default x x s)
+		Subst.find_region_def r r s
 
 	(* THINK: Should I refactor this into PP.tyvar ? *)
 	let pp r =
@@ -904,9 +840,11 @@ and EffectVar : sig
 
 	val zonk : t -> t
 
+	val fv_of : t -> Vars.t
+
 	val (=~) : t -> t -> unit
 
-	val vsubst : Var.t Subst.t -> t -> t
+	val vsubst : Subst.t -> t -> t
 
 	val pp : t -> PP.doc
 
@@ -1000,6 +938,12 @@ end = struct
 
 	let zonk = map Effects.zonk
 
+	let fv_of f =
+		if is_meta f
+		then Vars.just_effect f
+		else Vars.none
+
+
 	let rec add_lb delta =
 		map (fun lb -> Effects.(delta + lb))
 
@@ -1030,8 +974,7 @@ end = struct
 	let vsubst_lb s = map (Effects.vsubst s)
 
 	let vsubst s f =
-		let x = Var.Effect f in
-		let f' = Var.to_effect (Subst.find_default x x s) in
+		let f' = Subst.find_effect_def f f s in
 		vsubst_lb s f'
 
 	let pp f =
@@ -1151,7 +1094,7 @@ and Effects : sig
 
 	val enum_regions : t -> Region.t Enum.t
 
-	val vsubst : Var.t Subst.t -> t -> t
+	val vsubst : Subst.t -> t -> t
 
 	val of_enum : e certainty Enum.t -> t
 
@@ -1379,13 +1322,13 @@ and Effects : sig
 
 	let regions = Regions.of_enum % enum_regions
 
-	let vsubst_e (s :Var.t Subst.t) :e -> e
+	let vsubst_e (s :Subst.t) :e -> e
 		= function
 		| Var x     -> Var (EffectVar.vsubst s x)
 		| Mem (k,r) -> Mem (k,Region.vsubst s r)
 		| e         -> e
 
-	let vsubst (s :Var.t Subst.t) fs :t = {
+	let vsubst (s :Subst.t) fs :t = {
 		  may  = EffectSet.map (vsubst_e s) fs.may
 		; must = EffectSet.map (vsubst_e s) fs.must
 	}
@@ -1561,7 +1504,7 @@ and Var : sig
 
 	val write : t -> t -> unit
 
-	val vsubst : t Subst.t -> t -> t
+	val vsubst : Subst.t -> t -> t
 
 	val zonk_lb : t -> t
 
@@ -1823,52 +1766,86 @@ and VarMap : sig
 
 and Subst : sig
 
-	type 'a t
+	type t
 
-	val mk : (Var.t * 'a) list -> 'a t
+	val make : (Shape.var * Shape.var) Enum.t -> (Region.t * Region.t) Enum.t -> (EffectVar.t * EffectVar.t) Enum.t -> t
 
-	val of_enum : (Var.t * 'a) Enum.t -> 'a t
+	val of_enum_pair : VarEnum.t -> VarEnum.t -> Subst.t
 
-	val of_enums : (Shape.var * Shape.var) Enum.t -> (Region.t * Region.t) Enum.t -> (EffectVar.t * EffectVar.t) Enum.t -> Var.t t
+	val find_shape : Shape.var -> t -> Shape.var option
 
-	val find : Var.t -> 'a t -> 'a option
+	val find_region : Region.t -> t -> Region.t option
 
-	val find_default : 'a -> Var.t -> 'a t -> 'a
+	val find_effect : EffectVar.t -> t -> EffectVar.t option
 
-	val pp : Var.t t -> PP.doc
+	val find_shape_def : Shape.var -> Shape.var -> t -> Shape.var
 
-	val to_string : Var.t t -> string
+	val find_region_def : Region.t -> Region.t -> t -> Region.t
+
+	val find_effect_def : EffectVar.t -> EffectVar.t -> t -> EffectVar.t
+
+	val eprint : t -> unit
+
+	val fprint : unit IO.output -> t -> unit
 
 	end
 	= struct
 
-	module VarMap = Map.Make(Var)
+	(* FIXME:
+	 * I would like to use hash tables, but something is (or I am doing) wrong
+	 * with the hash function: sometimes a variable is not found in the subst,
+	 * even though I see it there if I print the substitution.
+	 *)
+	module ShapeMap = Map.Make(Shape.ShapeVar)
+	module RegionMap = Map.Make(Region)
+	module EffectMap = Map.Make(EffectVar)
 
-	type 'a t = 'a VarMap.t
+	type t = {
+		shapes  : Shape.var ShapeMap.t;
+		regions : Region.t RegionMap.t;
+		effects : EffectVar.t EffectMap.t;
+	}
 
-	let mk : (Var.t * 'a) list -> 'a t = fun xs ->
-		(* assert all variables are "Bound" *)
-		VarMap.of_enum (List.enum xs)
+	let make zs rs fs =
+		{ shapes  = ShapeMap.of_enum zs
+		; regions = RegionMap.of_enum rs
+		; effects = EffectMap.of_enum fs
+		}
 
-	let of_enum = VarMap.of_enum
+	let of_enum_pair xs ys =
+		let zs = Enum.combine(VarEnum.shapes xs,VarEnum.shapes ys) in
+		let rs = Enum.combine(VarEnum.regions xs,VarEnum.regions ys) in
+		let fs = Enum.combine(VarEnum.effects xs,VarEnum.effects ys) in
+		make zs rs fs
 
-	let of_enums zs rs fs =
-		let open Enum in
-		let zs' = map (fun (a1,a2) -> Var.(Shape a1,Shape a2)) zs in
-		let rs' = map (fun (r1,r2) -> Var.(Region r1,Region r2)) rs in
-		let fs' = map (fun (f1,f2) -> Var.(Effect f1,Effect f2)) fs in
-		VarMap.of_enum (append zs' (append rs' fs'))
+	let find_shape a {shapes}  = ShapeMap.Exceptionless.find a shapes
 
-	let find = VarMap.Exceptionless.find
+	let find_region r {regions} = RegionMap.Exceptionless.find r regions
 
-	let find_default v x s =
-		Option.(find x s |? v)
+	let find_effect f {effects}  = EffectMap.Exceptionless.find f effects
 
-	let pp s =
-		let pp_binding (x,y) = PP.(Var.pp x ++ !^ "->" ++ Var.pp y) in
-		PP.braces (Utils.pp_upto 20 PP.comma pp_binding (VarMap.enum s))
+	let find_shape_def def a s =
+		Option.(find_shape a s |? def)
 
-	let to_string = PP.to_string % pp
+	let find_region_def def r s =
+		Option.(find_region r s |? def)
+
+	let find_effect_def def f s =
+		Option.(find_effect f s |? def)
+
+	let fprint out {shapes; regions; effects} =
+		let string_of_var = PP.to_string % Shape.pp_var in
+		ShapeMap.enum shapes |> Enum.iter (fun (x,y) ->
+			Printf.fprintf out "%s -> %s\n" (string_of_var x) (string_of_var y)
+		);
+		RegionMap.enum regions |> Enum.iter (fun (x,y) ->
+			Printf.fprintf out "%s -> %s\n" (Region.to_string x) (Region.to_string y)
+		);
+		EffectMap.enum effects |> Enum.iter (fun (x,y) ->
+			Printf.fprintf out "%s -> %s\n" (EffectVar.to_string x) (EffectVar.to_string y)
+		)
+
+	let eprint = fprint IO.stderr
 
 	end
 
@@ -1924,7 +1901,7 @@ end = struct
 
 	let instantiate :Shape.t t -> Shape.t * Constraints.t =
 		fun { vars; body = shp} ->
-			let s = QV.instantiate vars in
+			let _, s = QV.instantiate vars in
 			let shp' = Shape.vsubst s shp in
 			assert(Vars.is_empty (Shape.bv_of shp'));
 			let k = Vars.filter_effects (Shape.fv_of shp') in
@@ -2052,7 +2029,9 @@ and QV : sig
 
 	val pp : t -> PP.doc
 
-	val instantiate : t -> Var.t Subst.t
+	val for_all : (Shape.var -> bool) -> (Region.t -> bool) -> (EffectVar.t -> bool) -> t -> bool
+
+	val instantiate : t -> TypeArgs.t * Subst.t
 
 	(** Assign fresh QVs to the given (zonked) meta variables and return the QVs. *)
 	val quantify : Vars.t -> t
@@ -2104,17 +2083,27 @@ end = struct
 	let pp qv =
 		Utils.pp_upto 10 PP.space Var.pp (VarEnum.enum (var_enum qv))
 
+	let for_all f g h {shapes; regions; effects} =
+		A.for_all f shapes
+		&& A.for_all g regions
+		&& A.for_all h effects
+
 	let generic_inst enum_of meta_of qv =
-		enum_of qv |> Enum.map (fun a ->
+		let ss = enum_of qv |> Enum.map (fun a ->
 			let ma = meta_of a in
 			a, ma
-		)
+		) in
+		Enum.force ss; (* otherwise clone will duplicate meta_of *)
+		let mv = Enum.clone ss |> Enum.map Tuple.Tuple2.second in
+		mv, ss
 
 	let instantiate qv =
-		let z_ss = qv |> generic_inst enum_shapes (fun _ -> Shape.meta_var()) in
-		let r_ss = qv |> generic_inst enum_regions (fun _ -> Region.meta()) in
-		let f_ss = qv |> generic_inst enum_effects EffectVar.(meta_with % lb_of) in
-		Subst.of_enums z_ss r_ss f_ss
+		let z_mv, z_ss = qv |> generic_inst enum_shapes (fun _ -> Shape.meta_var()) in
+		let r_mv, r_ss = qv |> generic_inst enum_regions (fun _ -> Region.meta()) in
+		let f_mv, f_ss = qv |> generic_inst enum_effects EffectVar.(meta_with % lb_of) in
+		let s = Subst.make z_ss r_ss f_ss in
+		let args = TypeArgs.of_var_enum VarEnum.(make z_mv r_mv f_mv) in
+		args, s
 
 	let quantify vs =
 		let ys = Vars.var_enum vs in
@@ -2136,6 +2125,131 @@ end = struct
 		in
 		let xs = ys |> VarEnum.map qz qr qf in
 		xs |> VarEnum.zonk_lb |> of_var_enum
+
+end
+
+and TypeArgs : sig
+
+	type t
+
+	val empty : t
+
+	val count : t -> int
+
+	val zonk : t -> t
+
+	val vsubst : Subst.t -> t -> t
+
+	val var_enum : t -> VarEnum.t
+
+	val of_var_enum : VarEnum.t -> t
+
+	val shapes : t -> Shape.t Enum.t
+
+	val regions : t -> Region.t Enum.t
+
+	val effects : t -> EffectVar.t Enum.t
+
+	val fprint : unit IO.output -> t -> unit
+
+	val pp_upto : t -> max:int -> PP.doc
+
+	val fv_of : t -> Vars.t
+
+	val bv_of : t -> Vars.t
+
+	val regions_in : t -> Regions.t
+
+end = struct
+
+	module A = Array.Cap
+
+	type t = {
+		shapes  : (Shape.t,[`Read]) A.t;
+		regions : (Region.t,[`Read]) A.t;
+		effects : (EffectVar.t,[`Read]) A.t;
+	}
+
+	let empty :t =
+		{ shapes  = A.of_list []
+		; regions = A.of_list []
+		; effects = A.of_list []
+		}
+
+	let count {shapes; regions; effects} =
+		A.(length shapes + length regions + length effects)
+
+	let shapes {shapes} = A.enum shapes
+
+	let regions {regions} = A.enum regions
+
+	let effects {effects} = A.enum effects
+
+	let var_enum {shapes; regions; effects} :VarEnum.t =
+		let zs = A.enum shapes |> Enum.map (function
+			| Shape.Var a -> a
+			| z     ->
+				let a = Shape.meta_var() in
+				Shape.write_var a z;
+				a
+		) in
+		let rs = A.enum regions in
+		let fs = A.enum effects in
+		VarEnum.make zs rs fs
+
+	let of_var_enum e =
+		{ shapes  = A.of_enum (Enum.map (fun a -> Shape.Var a) (VarEnum.shapes e))
+		; regions = A.of_enum (VarEnum.regions e)
+		; effects = A.of_enum (VarEnum.effects e)
+		}
+
+	let fprint out ts =
+		A.iter (fun z -> Printf.fprintf out " %s" (PP.to_string (Shape.pp z))) ts.shapes;
+		A.iter (fun r -> Printf.fprintf out " %s" (PP.to_string (Region.pp r))) ts.regions;
+		A.iter (fun f -> Printf.fprintf out " %s" (PP.to_string (EffectVar.pp f))) ts.effects;
+		Printf.fprintf out "\n"
+
+	let pp_upto ts ~max =
+		Utils.pp_upto max PP.comma Var.pp (VarEnum.enum (var_enum ts))
+
+	let zonk {shapes; regions; effects} :t =
+		{ shapes  = A.map Shape.zonk shapes
+		; regions = A.map Region.zonk regions
+		; effects = A.map EffectVar.zonk effects
+		}
+
+	let vsubst s {shapes; regions; effects} :t =
+		{ shapes  = A.map (Shape.vsubst s) shapes
+		; regions = A.map (Region.vsubst s) regions
+		; effects = A.map (EffectVar.vsubst s) effects
+		}
+
+	let fv_of args =
+		let z_fv = args.shapes  |> A.enum |> Enum.map Shape.fv_of     |> Vars.enum_sum in
+		let r_fv = args.regions |> A.enum |> Enum.map Region.fv_of    |> Vars.enum_sum in
+		let f_fv = args.effects |> A.enum |> Enum.map EffectVar.fv_of |> Vars.enum_sum in
+		Vars.(z_fv + r_fv + f_fv)
+
+	let bv_of args =
+		let bv_of_region r =
+			if not (Region.is_meta r)
+			then Vars.just_region r
+			else Vars.none
+		in
+		let bv_of_effect f =
+			if not (EffectVar.is_meta f)
+			then Vars.just_effect f
+			else Vars.none
+		in
+		let z_bv = args.shapes  |> A.enum |> Enum.map Shape.bv_of  |> Vars.enum_sum in
+		let r_bv = args.regions |> A.enum |> Enum.map bv_of_region |> Vars.enum_sum in
+		let f_bv = args.effects |> A.enum |> Enum.map bv_of_effect |> Vars.enum_sum in
+		Vars.(z_bv + r_bv + f_bv)
+
+	let regions_in args =
+		let z_rs = args.shapes |> A.enum |> Enum.map Shape.regions_in |> Regions.sum_enum in
+		let r_rs = args.regions |> A.enum |> Regions.of_enum in
+		Regions.(z_rs + r_rs)
 
 end
 
@@ -2228,16 +2342,12 @@ module Unify =
 
 	and unify_structs s1 s2 =
 		assert Cil.(s1.sinfo.cname = s2.sinfo.cname);
-		Array.Cap.iter2 unify_sarg s1.sargs s2.sargs
+		unify_args s1.sargs s2.sargs
 
-	and unify_sarg a1 a2 =
-		match (a1,a2) with
-		| (Z z1,Z z2) ->
-			Log.debug "unify_sarg: %s ~ %s" (to_string z1) (to_string z2);
-			z1 =~ z2
-		| (R r1,R r2) -> Region.(r1 =~ r2)
-		| (F f1,F f2) -> EffectVar.(f1 =~ f2)
-		| _other -> Error.panic()
+	and unify_args as1 as2 =
+		Enum.iter2 (=~) (TypeArgs.shapes as1) (TypeArgs.shapes as2);
+		Enum.iter2 Region.(=~) (TypeArgs.regions as1) (TypeArgs.regions as2);
+		Enum.iter2 EffectVar.(=~) (TypeArgs.effects as1) (TypeArgs.effects as2)
 
 	(* TODO: This function should find the longest prefix of unifiable fields. *)
 	(* and unify_fields = function *)
