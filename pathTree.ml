@@ -54,7 +54,7 @@ let take_edge visited node node' : visited option =
 		Some visited'
 
 let succs_of visited node : (Cil.stmt * visited) list =
-	(* NB: node.succss may be empty if 'stmt' contains an exit instruction. *)
+	(* NB: node.succs may be empty if 'stmt' contains an exit instruction. *)
 	Cil.(node.succs) |> List.filter_map (fun node' ->
 		take_edge visited node node' |>
 				Option.map (fun visited' -> node',visited')
@@ -87,7 +87,7 @@ type t = Nil
 
 (* Group instructions by location
  *
- * CIL instruction blocks include instructions comming from
+ * CIL instruction blocks include instructions coming from
  * different statements in the program. We are interested in
  * group these instructions by location. On the way, we also
  * compute the effects for each statement, and the sum of

@@ -369,7 +369,7 @@ and of_block_must fnAbs env rz b : E.t * K.t =
 and of_block (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
 	 sum_f_k_weak (List.map (of_stmt fnAbs env rz) Cil.(b.bstmts))
 
-(** Marks unitialized regions for a given type and shape, see [of_var_no_init]. *)
+(** Marks uninitialized regions for a given type and shape, see [of_var_no_init]. *)
 let rec of_type_no_init ty z :E.t =
 	let open Shape in
 	match (ty,z) with
@@ -487,7 +487,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GEnumTag _
 	| Cil.GEnumTagDecl _ -> env, k
 	(* extern declaration
-	 * NB: extern inline declarations should be accompained by a definition, so
+	 * NB: extern inline declarations should be accompanied by a definition, so
 	 *     we don't generate an axiom for them.
 	 *)
 	| Cil.GVarDecl (x,_) when Cil.(x.vstorage = Extern && not x.vinline) ->

@@ -61,7 +61,7 @@ module rec Shape : sig
 	 *
 	 * OBS: The majority of interesting operations on struct shapes
 	 * can be performed simply taking their actual arguments. No need
-	 * to write complicated travesals that examine the fields.
+	 * to write complicated traversals that examine the fields.
 	 *)
 	and cstruct =
 		{         sinfo   : Cil.compinfo
@@ -398,7 +398,7 @@ module rec Shape : sig
 	and lint_field_aux d fz = lint_shape_aux d fz.fshape
 
 	(* Check the well-formedness of a struct shape
-	 * using a reasonably small deph bound. *)
+	 * using a reasonably small depth bound. *)
 	let lint_struct = lint_struct_aux 2
 
 	(* Maps a struct to its generalized struct shape. *)
@@ -489,7 +489,7 @@ module rec Shape : sig
 		| None ->
 			match List.Exceptionless.assoc name cache with
 			| None ->
-				(* THINK how to accomodate the following properly:
+				(* THINK how to accommodate the following properly:
 				 * Sometimes you get a extern struct declaration, plus
 				 * a number of function prototypes referring to it. The
 				 * struct is never declared, but it's actually never
@@ -601,7 +601,7 @@ module rec Shape : sig
     (** Substitute variables with variables.
 	 *
 	 * To substitute variables with arbitrary shapes, simply
-	 * substite with meta-variables and zonk.
+	 * substitute with meta-variables and zonk.
 	 *)
     let rec vsubst s : t -> t
     	= function
@@ -1069,7 +1069,7 @@ and Effects : sig
 	(* (\** Read all memory regions of a given shape. *\) *)
 	(* val fully_read : Shape.t -> t *)
 
-	(** Weaken the certaint of the effects. *)
+	(** Weaken the certainty of the effects. *)
 	val weaken : t -> t
 
 	val mem : e -> t -> bool
