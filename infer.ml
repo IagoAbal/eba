@@ -102,16 +102,9 @@ let rec of_exp (env :Env.t)
 	 * the same way as [Lval]. *)
 	| Cil.Lval lv
 	| Cil.StartOf lv ->
-		let z, f, k = of_lval env lv in
-		let r, z0 = Unify.match_ref_shape z in
-		let f' =
-			(* If `lv' is a function, it's going to be called.
-			 * Otherwise CIL would have inserted an `&'. *)
-			if Shape.is_fun z0
-			then E.(f +. calls r)
-			else E.(f +. reads r)
-		in
-		z0, f', k
+		let _args, z, f, k = read_lval env lv in
+		assert(TypeArgs.is_empty _args);
+		z, f, k
 	(* Even though effectively [unsigned int] or the like,
 	 * it seems a terrible idea to cast [size_t] to a
 	 * pointer type, so we give it shape _|_.
@@ -144,17 +137,29 @@ let rec of_exp (env :Env.t)
 	   let z1 = Unify.match_shape_with_typ z ty in
 	   z1, f, k
 	| Cil.AddrOf lv
-	-> let z, f, k = of_lval env lv in
+	-> let _, z, f, k = of_lval env lv in
 	   Ptr z, f, k
 	(* TODO: This is a GCC extension, I hope not a popular one :-) *)
 	| Cil.AddrOfLabel _  -> Error.not_implemented("of_exp: addr-of-label")
 
+and read_lval env lv : TypeArgs.t * shape * E.t * K.t =
+	let args, z, f, k = of_lval env lv in
+	(* TODO: of_lval should always return a ref shape, no need to match? *)
+	let r, z0 = Unify.match_ref_shape z in
+	let f' =
+		 (* If `lv' is a function, it's going to be called.
+		  * Otherwise CIL would have inserted an `&'.
+		  *)
+		E.(f +. if Shape.is_fun z0 then calls r else reads r)
+	in
+	args, z0, f', k
+
 and of_lval (env :Env.t)
-	: Cil.lval -> shape * Effects.t * K.t
+	: Cil.lval -> TypeArgs.t * shape * Effects.t * K.t
 	= function (lhost,offset) ->
-		let z, f, k = of_lhost env lhost in
+		let args, z, f, k = of_lhost env lhost in
 		let z1, f1, k1 = with_offset env z offset in
-		z1, Effects.(f + f1), K.(k + k1)
+		args, z1, Effects.(f + f1), K.(k + k1)
 
 and with_offset (env: Env.t) (z :shape)
 	: Cil.offset -> shape * Effects.t * K.t
@@ -179,34 +184,45 @@ and with_offset (env: Env.t) (z :shape)
 		with_offset env z2 off
 
 and of_lhost (env :Env.t)
-	: Cil.lhost -> shape * Effects.t * K.t
+	: Cil.lhost -> TypeArgs.t * shape * Effects.t * K.t
 	= function
 	| Cil.Var x ->
 		let sch = Env.find x env in
-		let z, k = Scheme.instantiate sch in
-		(* assert (is_ref_shape z) ? *)
+		let z, args, k = Scheme.instantiate sch in
+		(* TODO: assert (is_ref_shape z) ? *)
 		assert(Vars.is_empty (Shape.bv_of z));
-		z, Effects.none, k
+		args, z, Effects.none, k
 	| Cil.Mem e ->
 		let z, f, k = of_exp env e in
 		let z1 = Unify.match_ptr_shape z in
-		z1, f, k
+		TypeArgs.empty, z1, f, k
 
 let with_lval_set (env :Env.t) z f k lv : Effects.t * K.t =
-	let z1, f1, k1 = of_lval env lv in
+	let _args, z1, f1, k1 = of_lval env lv in
+	assert(TypeArgs.is_empty _args);
 	let r, z0 = Unify.match_ref_shape z1 in
 	Unify.(z0 =~ z);
 	Effects.(f + f1 +. writes r), K.(k + k1)
 
-let of_instr (env :Env.t)
+let of_fun fnAbs env loc
+	: Cil.exp -> Shape.t * E.t * K.t
+	= function
+	| Cil.Lval ((Cil.Var _x),Cil.NoOffset as fx) ->
+		let args, z, f, k = read_lval env fx in
+		FunAbs.add_call fnAbs loc args;
+		z, f, k
+	| fn                                         ->
+		of_exp env fn
+
+let of_instr fnAbs (env :Env.t)
 	: Cil.instr -> Effects.t * K.t
 	= function
 	| Cil.Set (lv,e,_loc)
 	-> let z, f, k = of_exp env e in
 	   with_lval_set env z f k lv
-	| Cil.Call (lv_opt,fn,es,_loc)
+	| Cil.Call (lv_opt,fn,es,loc)
 	-> (* z' fn(zs) | f *)
-	   let z0, f0, k0 = of_exp env fn in
+	   let z0, f0, k0 = of_fun fnAbs env loc fn in
 	   assert(Vars.is_empty (Shape.bv_of z0));
 	   let zs, f, z' = Shape.get_fun z0 in
 	   let no_args = List.length zs in
@@ -247,7 +263,7 @@ let of_instr (env :Env.t)
 
 let of_instr_log fnAbs env instr =
 	let loc = Cil.get_instrLoc instr in
-	let f, k = of_instr env instr in
+	let f, k = of_instr fnAbs env instr in
 	 Log.debug "Instr effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)
 		   (Effects.to_string f);
@@ -397,7 +413,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	 *)
 	Cil.prepareCFG fd;
 	Cil.computeCFGInfo fd false;
-	let fnAbs = FunAbs.create () in
+	let fnAbs = FunAbs.create fd in
 	let fn = Cil.(fd.svar) in
 	let shp' = Scheme.((Env.find fn env).body) in (* TODO: should it be instantiated? *)
 	let f_r, shp'' = Unify.match_ref_shape shp' in

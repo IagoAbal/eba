@@ -67,11 +67,12 @@ let log_level_of_int = function
 	| 2 -> Log.INFO
 	| x -> Log.DEBUG (* x >= 3 *)
 
-let infer_files verbosity flag_gcstats flag_saveabs chk_uninit chk_noret chk_dlock chk_birq files =
+let infer_files verbosity flag_gcstats flag_saveabs flag_no_inlining chk_uninit chk_noret chk_dlock chk_birq files =
 	Log.color_on();
 	Log.set_log_level (log_level_of_int verbosity);
 	Opts.Set.gc_stats flag_gcstats;
 	Opts.Set.save_abs flag_saveabs;
+	Opts.Set.fp_inlining (not flag_no_inlining);
 	let checks = { chk_uninit; chk_noret; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
@@ -89,6 +90,10 @@ let flag_gcstats =
 let flag_saveabs =
 	let doc = "Save effect abstraction to an .abs file." in
 	Arg.(value & flag & info ["save-abs"] ~doc)
+
+let flag_no_inlining =
+	let doc = "Do not inline function calls." in
+	Arg.(value & flag & info ["no-inlining"] ~doc)
 
 let check_uninit =
 	let doc = "Check for uses of variables before initialization" in
@@ -112,6 +117,7 @@ let cmd =
 	Term.(pure infer_files
 		$ verbose
 		$ flag_gcstats $ flag_saveabs
+		$ flag_no_inlining
 		$ check_uninit $ check_noret $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man

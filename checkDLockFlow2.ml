@@ -31,7 +31,8 @@ module Spec = struct
 
 	let testP2 = not_unlocks
 
-	let testQ2 = may_lock
+	let testQ2_weak = may_lock
+
 
 	type bug = Region.t
 

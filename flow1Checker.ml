@@ -44,10 +44,10 @@ module Make (A :Spec) : S = struct
 
 	let search fd pt r : report L.t =
 		let lps = reachable false pt ~guard:(A.testP r) ~target:(A.testQ r) in
-		let mk_report (l,p,_) = {
+		let mk_report (s,p,_) = {
 			fn = Cil.(fd.svar);
 			reg = r;
-			loc = l;
+			loc = loc_of_step s;
 			trace = p;
 		} in
 		L.map mk_report lps
@@ -56,7 +56,7 @@ module Make (A :Spec) : S = struct
 		let fn = Cil.(fd.svar) in
 		let fsch, fnAbs = FileAbs.find_fun fileAbs fn in
 		let rs = A.select fileAbs fd fsch fnAbs in
-		let pt = paths_of fnAbs fd in
+		let pt = paths_of fnAbs in
 		(* NB: Lazy.t is not thread safe so this cannot be parallelized easily. *)
 		let bugs = rs |> L.map (search fd pt) |> L.concat in
 		bugs |> L.map string_of_report

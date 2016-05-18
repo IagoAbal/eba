@@ -190,7 +190,8 @@ and generate_if_next fnAbs visited if_count node =
  * to check it for the `Instr' case.
  *)
 
-let paths_of (fnAbs :FunAbs.t) (fd :Cil.fundec) :t delayed =
+let paths_of (fnAbs :FunAbs.t) :t delayed =
+	let fd = FunAbs.fundec fnAbs in
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> fun () -> Nil
@@ -211,7 +212,7 @@ let pp_path = function
 
 let push_dec x (l,xs,t) = (l,x::xs,t)
 
-let at_loc l t = L.cons (l,[],t) L.nil
+let at_loc s t = L.cons (s,[],t) L.nil
 
 let backtrack = L.nil
 
@@ -219,7 +220,7 @@ type st_pred = Effects.t -> bool
 
 (* TODO: We should return the statement or expression together with the location *)
 
-let rec reachable ks t ~guard ~target :(Cil.location * path * t delayed) L.t =
+let rec reachable ks t ~guard ~target :(step * path * t delayed) L.t =
 	let open L in
 	match t() with
 	| Assume(cond,b,t') ->
@@ -243,7 +244,7 @@ and record_if_matches ~target step ef t' =
 	if target ef
 	then begin
 		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
-		at_loc loc t'
+		at_loc step t'
 	end
 	else L.nil
 
@@ -255,3 +256,37 @@ and keep_searching ks ~guard ~target step ef t' =
 		reachable ks t' guard target
 	end
 	else L.nil
+
+(* *************** Inlining *************** *)
+
+let inline fileAbs callerAbs = function
+	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),_,_)],loc)
+	when FileAbs.has_fun fileAbs fn ->
+		Log.info "INLINING call to %s" Cil.(fn.vname);
+		let targs = FunAbs.args_of_call callerAbs loc in
+		let fnAbs = FileAbs.inst_fun fileAbs fn targs in
+		Some (fnAbs, paths_of fnAbs)
+	| _else ->
+		Log.info "INLINING was not possible :-(";
+		None
+
+let rec inline_check ~bound ~guard ~target ~file ~caller step =
+	if bound = 0
+	then begin
+		Log.info "INLINE_CHECK exhausted :-/";
+		None
+	end
+	else match inline file caller step with
+	| None -> None
+	| Some (fnAbs, pt) ->
+		let ps = reachable false pt ~guard ~target in
+		(* TODO: Pick the shortest match rather than the first one. *)
+		Option.bind (L.peek ps) (fun (step',_,_ as p) ->
+			let ef = FunAbs.effect_of fnAbs (loc_of_step step') in
+			if guard ef
+			then begin
+				Log.info "INLINE_CHECK succeeded :-)";
+				Some p
+			end
+			else inline_check ~bound:(bound-1) ~guard ~target ~file ~caller:fnAbs step'
+		)

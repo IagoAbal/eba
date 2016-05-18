@@ -22,6 +22,14 @@ let add_fun tbl x sch fnAbs =
 
 let find = VarMap.find
 
+let has_fun tbl fn =
+	match VarMap.Exceptionless.find tbl fn with
+	| None         -> false
+	| Some (Var _) ->
+		Log.error "FileAbs.has_fun: not a function: %s" Cil.(fn.vname);
+		false
+	| Some (Fun _) -> true
+
 let find_fun tbl fn =
 	match find tbl fn with
 	| Var _         ->
@@ -66,6 +74,14 @@ let finalize_entry = function
 		Fun(sch',fnAbs)
 
 let finalize = VarMap.map_inplace (fun _ -> finalize_entry)
+
+let inst_fun tbl ~fn targs =
+	let sch, abs = find_fun tbl fn in
+	let params, s = QV.instantiate Scheme.(sch.vars) in
+	TypeArgs.write params targs;
+	let abs' = FunAbs.vsubst s abs in
+	FunAbs.finalize abs';
+	abs'
 
 let print_var out x s f =
 	let loc = Utils.Location.to_string Cil.(x.vdecl) in

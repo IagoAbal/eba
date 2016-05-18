@@ -18,11 +18,11 @@ module Spec = struct
 
 	let testP1 _ _ = true
 
-	let testQ1 _ ef = E.(mem_must IrqsOff ef)
+	let testQ1 _ ef = E.(mem_must IrqsOff ef) && not E.(mem IrqsOn ef)
 
 	let testP2 _ ef = not E.(mem IrqsOn ef)
 
-	let testQ2 _ ef = E.(mem BhsOn ef)
+	let testQ2_weak _ ef = E.(mem BhsOn ef)
 
 	type bug = unit
 

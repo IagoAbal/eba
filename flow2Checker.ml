@@ -4,6 +4,8 @@
 
 open Batteries
 
+module Opts = Opts.Get
+
 open Type
 open PathTree
 
@@ -18,15 +20,19 @@ module type Spec = sig
 	(** A name to identify the checker *)
 	val name : string
 
-	(** Checker's internal state *)
+	(** Checker's internal context, eg. a region to track.
+	 *
+	 * TODO: Turn it into the checker's state.
+	 *)
 	type st
-	(** Selects initial states *)
+	(** Selects initial contexts *)
 	val select : FileAbs.t -> Cil.fundec -> shape scheme -> FunAbs.t -> st L.t
 	(** Tests *)
 	val testP1 : st -> Effects.t -> bool
 	val testQ1 : st -> Effects.t -> bool
 	val testP2 : st -> Effects.t -> bool
-	val testQ2 : st -> Effects.t -> bool
+	(** Q2 = P2 /\ Q2-weak *)
+	val testQ2_weak : st -> Effects.t -> bool
 
 	(** Bug data *)
 	type bug = st
@@ -52,11 +58,13 @@ module Make (A :Spec) : S = struct
 		A.doc_of_report fn bug loc1 loc2 trace
 	)
 
-	let same_loc (l1,_,_) (l2,_,_) = l1 = l2
+	let same_loc (s1,_,_) (s2,_,_) = loc_of_step s1 = loc_of_step s2
 
-	let cmp_match (l1,p1,_) (l2,p2,_) :int =
-		(* Order reversed so that L.unique_eq will take the simplest match *)
+	let cmp_match (s1,p1,_) (s2,p2,_) :int =
+		let l1 = loc_of_step s1 in
+		let l2 = loc_of_step s2 in
 		let lc = compare l1 l2 in
+		(* Order reversed so that L.unique_eq will take the simplest match *)
 		if lc = 0
 		then
 			let pc = compare (List.length p1) (List.length p2) in
@@ -73,7 +81,39 @@ module Make (A :Spec) : S = struct
 		 *)
 		L.(unique_eq ~eq:same_loc % (sort ~cmp:cmp_match))
 
-	let search fd pt st =
+	(**
+	 * Filter false positives due to effect ordering, ie. those Q2_weak matches
+	 * that do not satisfy the guard P2. For instance, consider:
+	 *
+	 *     g_1(lock l) { acquire(l); release(l); }
+	 *     g_2(lock l) { release(l); acquire(l); }
+	 *     f_i(lock l) { acquire(l); g_i(l); release(l); }
+	 *
+	 * for i=1,2. Both g_1 and g_2 have exactly the same effect signature, so
+	 * from f_i's point of view, they are indistinguishable. However, f_1 leads
+	 * to a deadlock while f_2 is safe.
+	 *
+	 * If we use a strong Q2 = acquire /\ not release, we find no bug; but if we
+	 * use a weaker Q2 = acquire, we incorrectly report a bug on f_2's call to
+	 * g_2. The solution is to use a weaker Q2, but inline calls to g_i and find
+	 * out whether the double lock acquisition is possible.
+	 *)
+	let filter_fp_notP2 fileAbs fnAbs st = L.filter_map (fun ((s2,_,_) as p2) ->
+		let l2 = loc_of_step s2 in
+		let ef = FunAbs.effect_of fnAbs l2 in
+		if Opts.fp_inlining() && not (A.testP2 st ef)
+		then begin
+			let confirmed = inline_check ~bound:1
+			~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
+			~file:fileAbs ~caller:fnAbs
+			s2
+			in
+			Option.bind confirmed (fun _ -> Some p2)
+		end
+		else Some p2
+		)
+
+	let search fileAbs fnAbs fd pt st =
 		(* p1 EU q1
 		 * Even if we find a match, we keep searching for more if P1 holds.
 		 * We want to find all Q1's, otherwise eg if a lock is manipulated
@@ -95,17 +135,18 @@ module Make (A :Spec) : S = struct
 		 * - If we reach the same location in different ways, we just keep the
 		 *   we just keep the shortest (first) one wrt [cmp_match].
 		 *)
-		let rss = nodup ps1 |> L.map (fun (l1,p1,pt') ->
+		let rss = nodup ps1 |> L.map (fun (s1,p1,pt') ->
 			let ps2 = reachable false pt'
 				~guard:(A.testP2 st)
-				~target:(A.testQ2 st)
+				~target:(A.testQ2_weak st)
 			in
 			(* THINK: ps2_nodup just in strict mode? *)
-			nodup ps2 |> L.map (fun (l2,p2,_) ->
+			let ps3 = ps2 |> nodup |> filter_fp_notP2 fileAbs fnAbs st in
+			ps3 |> L.map (fun (s2,p2,_) ->
 				{ fn   = Cil.(fd.svar)
 				; bug  = A.bug_of_st st
-				; loc1 = l1
-				; loc2 = l2
+				; loc1 = loc_of_step s1
+				; loc2 = loc_of_step s2
 				; trace= p1@p2
 				}
 			)
@@ -118,8 +159,8 @@ module Make (A :Spec) : S = struct
 		let fn = Cil.(fd.svar) in
 		let fsch, fnAbs = FileAbs.find_fun fileAbs fn in
 		let seeds = A.select fileAbs fd fsch fnAbs in
-		let pt = paths_of fnAbs fd in
-		let bugs = seeds |> L.map (search fd pt) |> L.concat in
+		let pt = paths_of fnAbs in
+		let bugs = seeds |> L.map (search fileAbs fnAbs fd pt) |> L.concat in
 		bugs |> L.map string_of_report
 
 end

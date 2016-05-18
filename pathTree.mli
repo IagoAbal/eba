@@ -45,7 +45,7 @@ type t = Nil
  * The algorithm inserts [Nil] and backtracks when an already
  * visited state is reached.
  *)
-val paths_of : FunAbs.t -> Cil.fundec -> t delayed
+val paths_of : FunAbs.t -> t delayed
 
 type st_pred = Effects.t -> bool
 
@@ -70,4 +70,19 @@ val reachable :
 	t delayed ->
 	guard:st_pred ->
 	target:st_pred ->
-	(Cil.location * path * t delayed) LazyList.t
+	(step * path * t delayed) LazyList.t
+
+(**
+ * Given a program step satistying the target (Q) but not the guard (P),
+ * repeatedly performs function inlining, until confirming that there is a path
+ * satisfying P EU (P /\ Q).
+ *
+ * NB: To prevent cycles, inlining is performed up to ~bound times.
+ *)
+val inline_check :
+	bound:int ->
+	guard:st_pred -> target:st_pred ->
+	file:FileAbs.t -> caller:FunAbs.t ->
+	step ->
+	(step * path * t delayed) option
+

@@ -6,20 +6,29 @@ open Type
 module VarMap = Hashtbl.Make(Utils.Varinfo)
 module LocMap = Hashtbl.Make(Utils.Location)
 
-(* TODO: Store the Cil.fundec too *)
 (* THINK: Local variables have monomorphic shape schemes... so we could simplify this as vars : shape VarMap.t *)
 type t = {
+	 (* Function definition. *)
+	fdec : Cil.fundec;
+	 (* Formal parameters and local variables. *)
 	vars : shape scheme VarMap.t;
-	locs : E.t LocMap.t
+	 (* Effects of a CIL instruction. *)
+	effs : E.t LocMap.t;
+	 (* Type arguments of a function call. *)
+	call : TypeArgs.t LocMap.t;
 }
 
 (* TODO: no_vars = formals + locals
          no_locs ~ no_stmts ?
  *)
-let create () =
-	{ vars = VarMap.create 11
-	; locs = LocMap.create 71
+let create fd =
+	{ fdec = fd
+	; vars = VarMap.create 3
+	; effs = LocMap.create 19
+	; call = LocMap.create 19
 	}
+
+let fundec tbl = tbl.fdec
 
 let add_var tbl x sch =
 	VarMap.replace tbl.vars x sch
@@ -31,30 +40,62 @@ let add_loc tbl loc eff =
 	Log.debug "Loc -> effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)
 		   (Effects.to_string eff);
-	LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.locs
+	(* TODO: assert(Vars.is_empty (Effects.bv_of eff)); *)
+	LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.effs
+
+let add_call tbl loc args =
+	LocMap.replace tbl.call loc args
 
 let fv_of_locals tbl =
 	VarMap.fold (fun _ sch fvs ->
 		Vars.(Scheme.fv_of sch + fvs)
 	) tbl.vars Vars.none
 
-let fv_of tbl =
-	let fv1 = fv_of_locals tbl in
-	LocMap.fold (fun _ ef fvs ->
-		Vars.(Effects.fv_of ef + fvs)
-	) tbl.locs fv1
+let fv_of_calls tbl =
+	LocMap.fold (fun _ targs fvs ->
+		Vars.(TypeArgs.fv_of targs + fvs)
+	) tbl.call Vars.none
 
-let map_inplace f g tbl =
+(* fv_of = fv_of_locals + effect variables from function calls *)
+let fv_of tbl =
+	let fvs = Vars.(fv_of_locals tbl + fv_of_calls tbl) in
+	assert(
+		tbl.effs |> LocMap.enum |> Enum.for_all (fun (_, ef) ->
+			Vars.subset (Effects.fv_of ef) fvs
+		)
+	);
+	fvs
+
+let map f g h tbl =
+	{ tbl with
+	  vars = VarMap.map f tbl.vars
+	; effs = LocMap.map g tbl.effs
+	; call = LocMap.map h tbl.call
+	}
+
+(* TODO: This should create a new read-write FunAbs *)
+let vsubst s = map
+	(fun _x sch -> Scheme.(of_shape (Shape.vsubst s sch.body)))
+	(fun _l -> Effects.vsubst s)
+	(fun _l -> TypeArgs.vsubst s)
+
+let map_inplace f g h tbl =
 	VarMap.map_inplace f tbl.vars;
-	LocMap.map_inplace g tbl.locs
+	LocMap.map_inplace g tbl.effs;
+	LocMap.map_inplace h tbl.call
 
 let zonk = map_inplace
 	(fun _x -> Scheme.zonk)
 	(fun _loc -> Effects.zonk)
+	(fun _loc ts ->
+		TypeArgs.zonk ts
+	)
 
+(* TODO: This should freeze a FunAbs becoming read-only *)
 let finalize = map_inplace
 	(fun _x -> Scheme.zonk)
 	(fun _loc -> Effects.(principal % zonk))
+	(fun _loc -> TypeArgs.zonk)
 
 let shape_of tbl =
 	VarMap.find tbl.vars
@@ -64,10 +105,13 @@ let regions_of tbl = Scheme.regions_in % shape_of tbl
 let regions_of_list tbl = Regions.sum % List.map (regions_of tbl)
 
 let effect_of tbl =
-	LocMap.find tbl.locs
+	LocMap.find tbl.effs
+
+let args_of_call tbl =
+	LocMap.find tbl.call
 
 let sum tbl =
-	LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.locs E.none
+	LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.effs E.none
 
 (* TODO: should be cached *)
 let effect_of_local_decl tbl fd :E.t =
@@ -103,11 +147,25 @@ let print_step out (l,f) =
 	let ef = Effects.to_string f in
 	Printf.fprintf out "%s -> %s\n" loc ef
 
-let print_steps out tbl = tbl.locs
+let print_steps out tbl = tbl.effs
 		 |> LocMap.enum
 		 |> List.of_enum
 		 |> List.sort Utils.compare_first
 		 |> List.iter (print_step out)
+
+(* There is nothing pretty to print unless we save more information,
+ * so this is mostly for debugging.
+ *)
+let print_call out (l,ts) =
+	let loc = Utils.Location.to_string l in
+	Printf.fprintf out "%s ->" loc;
+	TypeArgs.fprint out ts
+
+let print_calls out tbl = tbl.call
+		 |> LocMap.enum
+		 |> List.of_enum
+		 |> List.sort Utils.compare_first
+		 |> List.iter (print_call out)
 
 let fprint out tbl =
 	print_vars out tbl;

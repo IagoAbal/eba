@@ -415,7 +415,7 @@ module rec Shape : sig
 
 	(* Instantiate a parameterized struct shape with fresh meta variables. *)
 	let inst_struct s =
-		let new_args = s.sparams |> QV.instantiate |> Tuple.Tuple2.first in
+		let new_args = s.sparams |> QV.instantiate |> Tuple.Tuple2.first |> TypeArgs.of_var_enum in
 		let s' = { s with sargs = new_args } in
 		lint_struct s';
 		s'
@@ -1881,7 +1881,7 @@ and Constraints : sig
 
 and Scheme : sig
 	type 'a t = { vars : QV.t; body : 'a }
-	val instantiate : Shape.t t -> Shape.t * Constraints.t
+	val instantiate : Shape.t t -> Shape.t * TypeArgs.t * Constraints.t
 	val quantify : Vars.t -> Shape.t -> Shape.t t
 	val ref_of : Region.t -> Shape.t t -> Shape.t t
 	val regions_in : Shape.t t -> Regions.t
@@ -1899,13 +1899,13 @@ end = struct
 
 	type 'a t = { vars : QV.t; body : 'a }
 
-	let instantiate :Shape.t t -> Shape.t * Constraints.t =
+	let instantiate :Shape.t t -> Shape.t * TypeArgs.t * Constraints.t =
 		fun { vars; body = shp} ->
-			let _, s = QV.instantiate vars in
+			let args, s = QV.instantiate vars in
 			let shp' = Shape.vsubst s shp in
 			assert(Vars.is_empty (Shape.bv_of shp'));
 			let k = Vars.filter_effects (Shape.fv_of shp') in
-			shp', k
+			shp', TypeArgs.of_var_enum args, k
 
 	let quantify vs z =
 		(* Note that vs are meta variables that occur in z, and QV-instantiation
@@ -2031,7 +2031,7 @@ and QV : sig
 
 	val for_all : (Shape.var -> bool) -> (Region.t -> bool) -> (EffectVar.t -> bool) -> t -> bool
 
-	val instantiate : t -> TypeArgs.t * Subst.t
+	val instantiate : t -> VarEnum.t * Subst.t
 
 	(** Assign fresh QVs to the given (zonked) meta variables and return the QVs. *)
 	val quantify : Vars.t -> t
@@ -2102,7 +2102,7 @@ end = struct
 		let r_mv, r_ss = qv |> generic_inst enum_regions (fun _ -> Region.meta()) in
 		let f_mv, f_ss = qv |> generic_inst enum_effects EffectVar.(meta_with % lb_of) in
 		let s = Subst.make z_ss r_ss f_ss in
-		let args = TypeArgs.of_var_enum VarEnum.(make z_mv r_mv f_mv) in
+		let args = VarEnum.make z_mv r_mv f_mv in
 		args, s
 
 	let quantify vs =
@@ -2134,11 +2134,15 @@ and TypeArgs : sig
 
 	val empty : t
 
+	val is_empty : t -> bool
+
 	val count : t -> int
 
 	val zonk : t -> t
 
 	val vsubst : Subst.t -> t -> t
+
+	val write : VarEnum.t -> t -> unit
 
 	val var_enum : t -> VarEnum.t
 
@@ -2178,6 +2182,8 @@ end = struct
 
 	let count {shapes; regions; effects} =
 		A.(length shapes + length regions + length effects)
+
+	let is_empty tas = count tas = 0
 
 	let shapes {shapes} = A.enum shapes
 
@@ -2223,6 +2229,11 @@ end = struct
 		; regions = A.map (Region.vsubst s) regions
 		; effects = A.map (EffectVar.vsubst s) effects
 		}
+
+	let write vars args =
+		Enum.iter2 (fun x z -> Shape.write_var x z) (VarEnum.shapes vars) (shapes args);
+		Enum.iter2 (fun x r -> Region.write x r) (VarEnum.regions vars) (regions args);
+		Enum.iter2 (fun x f -> EffectVar.write x f) (VarEnum.effects vars) (effects args)
 
 	let fv_of args =
 		let z_fv = args.shapes  |> A.enum |> Enum.map Shape.fv_of     |> Vars.enum_sum in
