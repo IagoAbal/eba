@@ -2298,6 +2298,91 @@ end = struct
 
 end
 
+(* Whenever we need to manipulate a large number of free variables, and we don't
+ * need to enumerate the variables in the FV set, a DIET representation can be a
+ * fast and memory efficient representation. This works because when a shape
+ * scheme is instantiated we use fresh meta variables with consecutive unique
+ * ids, which can be efficiently manipulated as discrete intervals.
+ *)
+module DietFV : sig
+
+	type t
+
+	val empty : t
+
+	val add_shape : Shape.var -> t -> t
+
+	val add_region : Region.t -> t -> t
+
+	val add_effect : EffectVar.t -> t -> t
+
+	val mem_shape : Shape.var -> t -> bool
+
+	val mem_region : Region.t -> t -> bool
+
+	val mem_effect : EffectVar.t -> t -> bool
+
+	val union : t -> t -> t
+
+	val diff_vars : Vars.t -> t -> Vars.t
+
+	val of_shape : Shape.t -> t
+
+	val of_effects : Effects.t -> t
+
+	val of_scheme : Shape.t Scheme.t -> t
+
+	val eprint : t -> unit
+
+end = struct
+
+	type t = ISet.t
+
+	let empty = ISet.empty
+
+	let int_of_shape a = Uniq.to_int (Shape.uniq_of a)
+
+	let int_of_region r = Uniq.to_int (Region.uniq_of r)
+
+	let int_of_effect f = Uniq.to_int (EffectVar.uniq_of f)
+
+	let add_shape a = ISet.add (int_of_shape a)
+
+	let add_region r = ISet.add (int_of_region r)
+
+	let add_effect f = ISet.add (int_of_effect f)
+
+	let mem_shape a = ISet.mem (int_of_shape a)
+
+	let mem_region r = ISet.mem (int_of_region r)
+
+	let mem_effect f = ISet.mem (int_of_effect f)
+
+	let union = ISet.union
+
+	let diff_vars vs fv =
+		vs |> Vars.filter (fun a -> not (mem_shape a fv))
+		                  (fun r -> not (mem_region r fv))
+		                  (fun f -> not (mem_effect f fv))
+
+	let fv_of foldv x =
+		let f = Shape.if_meta add_shape in
+		let g = Region.if_meta add_region in
+		let h = EffectVar.if_meta add_effect in
+		foldv f g h empty x
+
+	let of_shape z =
+		fv_of Shape.foldv z
+
+	let of_effects ff =
+		fv_of Effects.foldv ff
+
+	let of_scheme sch = of_shape Scheme.(sch.body)
+
+	let eprint = ISet.print IO.stderr
+
+end
+
 module E = Effects
 
 module type FVable = sig

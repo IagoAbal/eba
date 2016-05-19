@@ -28,7 +28,7 @@ let generalize_fun env_fv k r z fnAbs
 	  (* Generalize unconstrained local variables too. *)
 	let abs_fv = FunAbs.fv_of_locals fnAbs in
 	let fd_fv = Vars.(z_fv + abs_fv) in
-	let vs' = Vars.diff fd_fv env_fv in
+	let vs' = DietFV.diff_vars fd_fv env_fv in
 	  (* Prevents incorrect quantification over the function's code region [r]
 	   * in case of a function that calls itself.
 	   *)
@@ -43,8 +43,8 @@ let generalize_fun env_fv k r z fnAbs
 (* THINK: We can fuse zonk and filter with filter_map *)
 let observe env_fv ef :E.t =
     let is_observable = function
-		| E.Var x     -> Vars.mem_effect x env_fv
-		| E.Mem(_k,r) -> Vars.mem_region r env_fv
+		| E.Var x     -> DietFV.mem_effect x env_fv
+		| E.Mem(_k,r) -> DietFV.mem_region r env_fv
 		| _other      -> true
 	in
 	let open Effects in
@@ -431,8 +431,8 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	let bf, k1 = of_block_must fnAbs env'' z_res body in
 	let ff = E.(lf + bf) in
 	(* Share FV computation *)
-	let env_nofn_fv = Env.(fv_of (zonk (remove fn env))) in
-	let env'_fv = List.fold_left (fun fvs (_,s) -> Vars.union Scheme.(fv_of (zonk s)) fvs) (Vars.union Shape.(fv_of (zonk shp')) env_nofn_fv) args_bs in
+	let env_nofn_fv = Env.(zonk_diet_fv_of (remove fn env)) in
+	let env'_fv = List.fold_left DietFV.(fun fvs (_,s) -> union Scheme.(of_scheme (zonk s)) fvs) DietFV.(union (of_shape (zonk shp')) env_nofn_fv) args_bs in
 	let ff' = observe env'_fv ff in (* FIXME in the paper: not env but env'! *)
 	(* f >= ff' may introduce a recursive subeffecting constraint
 	   if the function is recursive.
@@ -449,9 +449,10 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 	 * violating Scheme.t invariant.
 	 *)
 	let env_nofn_fv2 =
-		let open Vars in
+		(* TODO: clean up *)
+		let open DietFV in
 		if mem_effect f env_nofn_fv
-		then union env_nofn_fv Effects.(fv_of (zonk ff'))
+		then union env_nofn_fv (of_effects (Effects.zonk ff'))
 		else env_nofn_fv
 	in
 	let sch, k3 = generalize_fun env_nofn_fv2 k2 f_r shp'' fnAbs in

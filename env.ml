@@ -66,6 +66,12 @@ let fv_of env :Vars.t =
 		Vars.union (Shape.fv_of shp)
 	) env Vars.empty
 
+let zonk_diet_fv_of env :DietFV.t =
+	let open Scheme in
+	VarMap.fold (fun _ sch ->
+		DietFV.(union (of_scheme (Scheme.zonk sch)))
+	) env DietFV.empty
+
 let print_binding out (x,sch) =
 	Printf.fprintf out "%s : %s\n" Cil.(x.vname) Scheme.(to_string sch)
 

@@ -37,6 +37,8 @@ val zonk : t -> t
 
 val fv_of : t -> Vars.t
 
+val zonk_diet_fv_of : t -> DietFV.t
+
 (** Print to stdout *)
 val print : t -> unit
 
