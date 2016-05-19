@@ -9,6 +9,11 @@ let compare_on_first f (x,_) (y,_) = Pervasives.compare (f x) (f y)
 
 let equal_on f x y = (f x) = (f y)
 
+let apply_if cond f x =
+	if cond
+	then f x
+	else x
+
 let instr_same_loc = equal_on Cil.get_instrLoc
 
 let match_pair = function

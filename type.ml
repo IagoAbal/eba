@@ -81,6 +81,24 @@ module rec Shape : sig
 		val hash : t -> int
 	end
 
+	(**
+	 * if_meta f ?a x = f ?a x
+	 * if_meta f 'a x = x
+	 *)
+	val if_meta : (var -> 'a -> 'a) -> var -> 'a -> 'a
+
+	(**
+	 * if_bound f ?a x = x
+	 * if_bound f 'a x = f 'a x
+	 *)
+	val if_bound : (var -> 'a -> 'a) -> var -> 'a -> 'a
+
+	val foldv : (Shape.var -> 'a -> 'a) ->
+		(Region.t -> 'a -> 'a) ->
+		(EffectVar.t -> 'a -> 'a) ->
+		'a ->
+		t -> 'a
+
 	val fv_of : t -> Vars.t
 
 	val fv_of_fields : fields -> Vars.t
@@ -200,43 +218,45 @@ module rec Shape : sig
 
 	and field = { finfo : Cil.fieldinfo; fshape : t }
 
+	let is_meta = function
+		| Meta  _ -> true
+		| Bound _ -> false
+
 	(** Bound variables are NOT free by definition! *)
-	let rec fv_of :t -> Vars.t = function
-		| Var a     -> fv_of_var a
-		| Bot       -> Vars.none
-		| Ptr z     -> fv_of z
-		| Fun f     -> fv_of_fun f
-		| Struct s  -> fv_of_struct s
-		| Ref (r,z) ->
-			let z_fv = fv_of z in
-			(* THINK: This pattern should be abstracted *)
-			if Region.is_meta r
-			then Vars.add_region r z_fv
-			else z_fv
+	let rec foldv f g h x = function
+		| Var a     -> f a x
+		| Bot       -> x
+		| Ptr z     -> foldv f g h x z
+		| Fun fn    -> foldv_fun f g h x fn
+		| Struct s  -> foldv_struct f g h x s
+ 		| Ref (r,z) ->
+			let x' = foldv f g h x z in
+			g r x'
 
-	and fv_of_var :var -> Vars.t = function
-		(* surely, if it's bound then it cannot be free :-) *)
-		| Bound _          -> Vars.none
-		(* THINK: we go into meta variables to be more robust, should we? *)
-		| Meta (_,ma) as a ->
-			let fvs = Meta.fv_with fv_of ma in
-			Vars.add_shape a fvs
+	and foldv_list f g h x (zs :t list) =
+		List.fold_left (foldv f g h) x zs
 
-	and fv_of_list (zs :t list) :Vars.t =
-    	let fvs = List.map fv_of zs in
-    	List.fold_left Vars.union Vars.empty fvs
+	and foldv_fun f g h x {domain; effects; range} =
+		let x1 = foldv_list f g h x domain in
+		let x2 = foldv f g h x1 range in
+		EffectVar.foldv f g h x2 effects
 
-	and fv_of_fun {domain; effects; range} =
-		let dom_fv = fv_of_list domain in
-		let res_fv = fv_of range in
-		let ffv = Vars.union dom_fv res_fv in
-		if EffectVar.is_meta effects
-		then Vars.add_effect effects ffv
-		else ffv
+	and foldv_struct f g h x s = TypeArgs.foldv f g h x s.sargs
 
-	and fv_of_struct s = TypeArgs.fv_of s.sargs
+	let if_meta f a x = Utils.apply_if (is_meta a) (f a) x
 
-	and fv_of_fields fs = Vars.sum (List.map fv_of_field fs)
+	let if_bound f a x = Utils.apply_if (not (is_meta a)) (f a) x
+
+	(* TODO: Note that most, if not all, fv_of variants share use the same
+	 * f,g,h functions. We could refactor fv_of definition in Vars.
+	 *)
+	let fv_of z =
+		let f = if_meta Vars.add_shape in
+		let g = Region.if_meta Vars.add_region in
+		let h = EffectVar.if_meta Vars.add_effect in
+		foldv f g h Vars.empty z
+
+	let rec fv_of_fields fs = Vars.sum (List.map fv_of_field fs)
 
 	and fv_of_field {fshape} = fv_of fshape
 
@@ -244,39 +264,13 @@ module rec Shape : sig
 
 	let not_free_in a z = not(free_in a z)
 
-	(* TODO: Refactor with fv_of *)
-	let rec bv_of :t -> Vars.t = function
-		| Var a     -> bv_of_var a
-		| Bot       -> Vars.none
-		| Ptr z     -> bv_of z
-		| Fun f     -> bv_of_fun f
-		| Struct s  -> bv_of_struct s
-		| Ref (r,z) ->
-			let z_bv = bv_of z in
-			(* THINK: This pattern should be abstracted *)
-			if not (Region.is_meta r)
-			then Vars.add_region r z_bv
-			else z_bv
+	let bv_of z =
+		let f = if_bound Vars.add_shape in
+		let g = Region.if_bound Vars.add_region in
+		let h = EffectVar.if_bound Vars.add_effect in
+		foldv f g h Vars.empty z
 
-	and bv_of_var :var -> Vars.t = function
-		(* surely, if it's bound then it cannot be free :-) *)
-		| Bound _  as a -> Vars.just_shape a
-		(* THINK: we go into meta variables to be more robust, should we? *)
-		| Meta (_,ma)   -> Meta.map_default bv_of Vars.empty ma
-
-    and bv_of_list (zs :t list) :Vars.t =
-    	let bvs = List.map bv_of zs in
-    	List.fold_left Vars.union Vars.empty bvs
-
-	and bv_of_fun {domain; effects; range} =
-		let dom_bv = bv_of_list domain in
-		let res_bv = bv_of range in
-		let ffv = Vars.union dom_bv res_bv in
-		if not (EffectVar.is_meta effects)
-		then Vars.add_effect effects ffv
-		else ffv
-
-	and bv_of_struct s = TypeArgs.bv_of s.sargs
+	let rec bv_of_struct s = TypeArgs.bv_of s.sargs
 
 	and bv_of_fields fs = Vars.sum (List.map bv_of_field fs)
 
@@ -312,10 +306,6 @@ module rec Shape : sig
 		let equal = Utils.equal_on uniq_of
 		let hash = Hashtbl.hash % uniq_of
 	end
-
-	let is_meta = function
-		| Meta  _ -> true
-		| Bound _ -> false
 
 	let eq_var a b = uniq_of a = uniq_of b
 
@@ -651,19 +641,11 @@ module rec Shape : sig
 			Log.error "Struct %s has no field %s" PP.(to_string (pp_struct s)) fn;
 			Error.panic_with("Shape.field")
 
-	let rec regions_in = function
-		| Var _
-		| Bot      -> Regions.none
-		| Ptr z    -> regions_in z
-		| Fun fz   -> regions_in_fun fz
-		| Struct s -> regions_in_struct s
-		| Ref(r,z) -> Regions.add r (regions_in z)
-	and regions_in_fun = fun {domain; range} ->
-	    Regions.(regions_in_args domain + regions_in range)
-	(* THINK: Should I turn it into PP.tuple ~pp ? *)
-	and regions_in_args args = args |> List.map regions_in |> Regions.sum
-	and regions_in_struct s =
-		TypeArgs.regions_in s.sargs
+	let rec regions_in z =
+		let f _ x = x in
+		let g = Regions.add in
+		let h _ x = x in
+		foldv f g h Regions.empty z
 
 	let fully_read z = z
 		|> regions_in
@@ -682,6 +664,18 @@ and Region : sig
 	val uniq_of : t -> Uniq.t
 
 	val is_meta : t -> bool
+
+	(**
+	 * if_meta f ?r x = f ?r x
+	 * if_meta f 'r x = x
+	 *)
+	val if_meta : (t -> 'a -> 'a) -> t -> 'a -> 'a
+
+	(**
+	 * if_bound f ?r x = x
+	 * if_bound f 'r x = f 'r x
+	 *)
+	val if_bound : (t -> 'a -> 'a) -> t -> 'a -> 'a
 
 	val compare : t -> t -> int
 
@@ -721,6 +715,10 @@ end = struct
 		| Meta _  -> true
 		| Bound _ -> false
 
+	let if_meta f r x = Utils.apply_if (is_meta r) (f r) x
+
+	let if_bound f r x = Utils.apply_if (not (is_meta r)) (f r) x
+
 	let compare = Utils.compare_on uniq_of
 
 	let equal = Utils.equal_on uniq_of
@@ -749,9 +747,7 @@ end = struct
 			Option.(Meta.zonk_with zonk mr |? r)
 
 	let fv_of r =
-		if is_meta r
-		then Vars.just_region r
-		else Vars.none
+		Vars.(if_meta add_region r none)
 
 	let unify_unbound id1 mr1 = function
 		| Meta(id2,_) when id1 = id2 -> ()
@@ -828,6 +824,18 @@ and EffectVar : sig
 
 	val is_meta : t -> bool
 
+	(**
+	 * if_meta h ?f x = h ?f x
+	 * if_meta h 'f x = x
+	 *)
+	val if_meta : (t -> 'a -> 'a) -> t -> 'a -> 'a
+
+	(**
+	 * if_bound h ?f x = x
+	 * if_bound h 'f x = h 'f x
+	 *)
+	val if_bound : (t -> 'a -> 'a) -> t -> 'a -> 'a
+
 	val meta_with : lb -> t
 
 	val meta : unit -> t
@@ -839,6 +847,12 @@ and EffectVar : sig
 	val write : t -> t -> unit
 
 	val zonk : t -> t
+
+	val foldv : (Shape.var -> 'a -> 'a) ->
+		(Region.t -> 'a -> 'a) ->
+		(EffectVar.t -> 'a -> 'a) ->
+		'a ->
+		t -> 'a
 
 	val fv_of : t -> Vars.t
 
@@ -885,6 +899,10 @@ end = struct
 		| Bound _ -> false
 		| Meta _  -> true
 
+	let if_meta f ef x = Utils.apply_if (is_meta ef) (f ef) x
+
+	let if_bound f ef x = Utils.apply_if (not (is_meta ef)) (f ef) x
+
 	let get_meta = function
 		| Bound _ -> Error.panic_with("get_meta: not a meta-effect variable")
 		| Meta mf -> mf
@@ -903,12 +921,6 @@ end = struct
 	let equal = Utils.equal_on uniq_of
 
 	let hash = Hashtbl.hash % uniq_of
-
-	let fv_of f =
-		let lb_fv = Effects.fv_of (lb_of f) in
-		if is_meta f
-		then Vars.add_effect f lb_fv
-		else lb_fv
 
 	let meta_with lb :t =
 		let id = Uniq.fresh() in
@@ -938,11 +950,21 @@ end = struct
 
 	let zonk = map Effects.zonk
 
-	let fv_of f =
-		if is_meta f
-		then Vars.just_effect f
-		else Vars.none
+	let foldv f g h x ef =
+		let x' = h ef x in
+		Effects.foldv f g h x' (lb_of ef)
 
+	(* FIXME: If there exist cycles in the `lb_of' graph, `fv_of' will diverge.
+	 * I don't handle this for now because I need to re-think the handling
+	 * of subeffecting constraints, and a new design could make this a no problem.
+	 * Otherwise the `h' function passed to `foldv' could check if `ef' is already
+	 * in `x' and, if so, return `None' so that `foldv' will not recurse.
+	 *)
+	let fv_of ef =
+		let f = Shape.if_meta Vars.add_shape in
+		let g = Region.if_meta Vars.add_region in
+		let h = if_meta Vars.add_effect in
+		foldv f g h Vars.empty ef
 
 	let rec add_lb delta =
 		map (fun lb -> Effects.(delta + lb))
@@ -1087,6 +1109,12 @@ and Effects : sig
 	val remove : e -> t -> t
 
 	val compare : t -> t -> int
+
+	val foldv : (Shape.var -> 'a -> 'a) ->
+		(Region.t -> 'a -> 'a) ->
+		(EffectVar.t -> 'a -> 'a) ->
+		'a ->
+		t -> 'a
 
 	val fv_of : t -> Vars.t
 
@@ -1303,14 +1331,18 @@ and Effects : sig
 	(* 	in *)
 	(* 	fold f z *)
 
-	let fv_of fs =
-		let ff = fs |> enum_may |> List.of_enum in
-		let xss = ff |> List.map (function
-			| Var x    -> EffectVar.fv_of x
-			| Mem(_,r) when Region.is_meta r -> Vars.just_region r
-			| _other   -> Vars.none
-		) in
-		Vars.sum xss
+	let foldv f g h x efs =
+		enum_may efs |> Enum.fold (fun x1 -> function
+		| Var ef   -> EffectVar.foldv f g h x1 ef
+		| Mem(_,r) -> g r x1
+		| _else___ -> x1
+		) x
+
+	let fv_of efs =
+		let f = Shape.if_meta Vars.add_shape in
+		let g = Region.if_meta Vars.add_region in
+		let h = EffectVar.if_meta Vars.add_effect in
+		foldv f g h Vars.empty efs
 
 	(* TODO: Use lazy lists instead ? *)
 	let enum_regions ef =
@@ -2158,6 +2190,12 @@ and TypeArgs : sig
 
 	val pp_upto : t -> max:int -> PP.doc
 
+	val foldv : (Shape.var -> 'a -> 'a) ->
+		(Region.t -> 'a -> 'a) ->
+		(EffectVar.t -> 'a -> 'a) ->
+		'a ->
+		t -> 'a
+
 	val fv_of : t -> Vars.t
 
 	val bv_of : t -> Vars.t
@@ -2235,32 +2273,28 @@ end = struct
 		Enum.iter2 (fun x r -> Region.write x r) (VarEnum.regions vars) (regions args);
 		Enum.iter2 (fun x f -> EffectVar.write x f) (VarEnum.effects vars) (effects args)
 
+	let foldv f g h x args =
+		let x1 = A.fold_left Shape.(foldv f g h) x args.shapes in
+		let x2 = A.fold_right g args.regions x1 in
+		A.fold_left EffectVar.(foldv f g h) x2 args.effects
+
 	let fv_of args =
-		let z_fv = args.shapes  |> A.enum |> Enum.map Shape.fv_of     |> Vars.enum_sum in
-		let r_fv = args.regions |> A.enum |> Enum.map Region.fv_of    |> Vars.enum_sum in
-		let f_fv = args.effects |> A.enum |> Enum.map EffectVar.fv_of |> Vars.enum_sum in
-		Vars.(z_fv + r_fv + f_fv)
+		let f = Shape.if_meta Vars.add_shape in
+		let g = Region.if_meta Vars.add_region in
+		let h = EffectVar.if_meta Vars.add_effect in
+		foldv f g h Vars.empty args
 
 	let bv_of args =
-		let bv_of_region r =
-			if not (Region.is_meta r)
-			then Vars.just_region r
-			else Vars.none
-		in
-		let bv_of_effect f =
-			if not (EffectVar.is_meta f)
-			then Vars.just_effect f
-			else Vars.none
-		in
-		let z_bv = args.shapes  |> A.enum |> Enum.map Shape.bv_of  |> Vars.enum_sum in
-		let r_bv = args.regions |> A.enum |> Enum.map bv_of_region |> Vars.enum_sum in
-		let f_bv = args.effects |> A.enum |> Enum.map bv_of_effect |> Vars.enum_sum in
-		Vars.(z_bv + r_bv + f_bv)
+		let f = Shape.if_bound Vars.add_shape in
+		let g = Region.if_bound Vars.add_region in
+		let h = EffectVar.if_bound Vars.add_effect in
+		foldv f g h Vars.empty args
 
 	let regions_in args =
-		let z_rs = args.shapes |> A.enum |> Enum.map Shape.regions_in |> Regions.sum_enum in
-		let r_rs = args.regions |> A.enum |> Regions.of_enum in
-		Regions.(z_rs + r_rs)
+		let f _ x = x in
+		let g = Regions.add in
+		let h _ x = x in
+		foldv f g h Regions.empty args
 
 end
 
