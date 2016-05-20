@@ -1,3 +1,5 @@
+module Opts = Opts.Get
+
 open Batteries
 open Type
 
@@ -557,7 +559,8 @@ let of_file (file : Cil.file) :FileAbs.t =
 	 * TODO: DCE can do a better job if given a complete program, it would be
 	 * desirable to check for a main() function, or get it via a flag.
 	 *)
-	Rmtmps.(removeUnusedTemps ?isRoot:(Some isExportedRoot) file);
+	if Opts.dce()
+	then Rmtmps.(removeUnusedTemps ?isRoot:(Some isExportedRoot) file);
 	process_structs file;
 	(* TODO: Here we can read axioms *)
 	let no_globals = List.length Cil.(file.globals) in

@@ -7,6 +7,8 @@ module Set : sig
 
 	val fp_inlining : bool -> unit
 
+	val dce : bool -> unit
+
 end
 
 module Get : sig
@@ -16,5 +18,7 @@ module Get : sig
 	val save_abs : unit -> bool
 
 	val fp_inlining : unit -> bool
+
+	val dce : unit -> bool
 
 end
