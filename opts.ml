@@ -4,6 +4,7 @@ type copts = {
 	mutable save_abs : bool;
 	mutable fp_inlining : bool;
 	mutable dce : bool;
+	mutable dfe : bool;
 }
 
 let opts : copts = {
@@ -11,6 +12,7 @@ let opts : copts = {
 	save_abs = false;
 	fp_inlining = true;
 	dce = true;
+	dfe = true;
 }
 
 module Set =
@@ -24,6 +26,8 @@ struct
 
 	let dce v = opts.dce <- v
 
+	let dfe v = opts.dfe <- v
+
 end
 
 module Get =
@@ -36,5 +40,7 @@ struct
 	let fp_inlining () = opts.fp_inlining
 
 	let dce () = opts.dce
+
+	let dfe () = opts.dfe
 
 end

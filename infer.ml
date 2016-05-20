@@ -561,6 +561,12 @@ let of_file (file : Cil.file) :FileAbs.t =
 	 *)
 	if Opts.dce()
 	then Rmtmps.(removeUnusedTemps ?isRoot:(Some isExportedRoot) file);
+	(* Dead field elimination: Lots of structure fields are unused, eliminating
+	 * them has the nice effect of reducing the amount of free and bound variables
+	 * to handle, and the performance boost can be significant.
+	 *)
+	if Opts.dfe()
+	then Structs.DFE.of_file file;
 	process_structs file;
 	(* TODO: Here we can read axioms *)
 	let no_globals = List.length Cil.(file.globals) in

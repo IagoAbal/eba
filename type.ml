@@ -566,7 +566,7 @@ module rec Shape : sig
 	let infer_struct ci = infer_structs [ci]
 
 	let process_structs (file :Cil.file) :unit =
-		Structs.of_file file
+		Structs.Dep.of_file file
 			|> List.iter infer_structs
 
 	let of_varinfo x = ref_of Cil.(x.vtype)

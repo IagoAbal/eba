@@ -9,6 +9,8 @@ module Set : sig
 
 	val dce : bool -> unit
 
+	val dfe : bool -> unit
+
 end
 
 module Get : sig
@@ -18,6 +20,8 @@ module Get : sig
 	val save_abs : unit -> bool
 
 	val fp_inlining : unit -> bool
+
+	val dfe : unit -> bool
 
 	val dce : unit -> bool
 
