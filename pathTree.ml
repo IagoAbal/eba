@@ -121,6 +121,23 @@ let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
  *)
 let c_MAX_IF_COUNT = 10
 
+(**
+ * NB: Empty if-then blocks such as
+ *
+ *     if (c) { }
+ *
+ * will have only one successor node. Since CIL if guards are side-effect free,
+ * we just take the _then_ branch to avoid reanalyzing equivalent path sets.
+ *
+ * THINK: Are there other cases apart from empty if bocks?
+ *)
+let succs_of_if if_node =
+	match Cil.(if_node.succs) with
+	| []        -> Error.panic_with "PathThree.generate(If): no succesors"
+	| [thn]     -> None,     thn
+	| [els;thn] -> Some els, thn
+	| _else____ -> Error.panic_with "PathThree.generate(If): more than two succesors"
+
 let rec generate fnAbs visited if_count node :t =
 	let sk = Cil.(node.skind) in
 	match sk with
@@ -160,13 +177,15 @@ let rec generate fnAbs visited if_count node :t =
 				let alt = fun () -> generate fnAbs visited' (if_count+1) node' in
 				fun () -> Assume (cond,dec,alt)
 		in
-		assert Cil.(List.length node.succs = 2);
 		(* THINK: What would be the smart strategy when c_MAX_IF_COUNT is reached? *)
-		let if_else, if_then = Utils.match_pair Cil.(node.succs) in
+		let if_else_opt, if_then = succs_of_if node in
 		let left (* else *) =
-			if if_count <= c_MAX_IF_COUNT
-			then take_branch false if_else
-			else fun () -> Nil (* no more branching ! *)
+			match if_else_opt with
+			| None -> fun () -> Nil
+			| Some if_else ->
+				if if_count <= c_MAX_IF_COUNT
+				then take_branch false if_else
+				else fun () -> Nil (* no more branching ! *)
 		in
 		let right (* then *) = take_branch true if_then in
 		let test = Test(e,loc) in
