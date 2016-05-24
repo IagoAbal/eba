@@ -493,9 +493,11 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	 * NB: extern inline declarations should be accompanied by a definition, so
 	 *     we don't generate an axiom for them.
 	 *)
-	| Cil.GVarDecl (x,_) when Cil.(x.vstorage = Extern && not x.vinline) ->
+	| Cil.GVarDecl (x,_)
+			when (Cil.(x.vstorage = Extern && not x.vinline)
+			|| Cil.(String.starts_with x.vname "__builtin_")) ->
 		let xn = Cil.(x.vname) in
-		Log.debug "Extern declaration: %s\n" xn;
+		Log.debug "Extern/builtin declaration: %s\n" xn;
 		let x_ax = Axioms.find x in
 		let env' = Env.((x,x_ax) +:: env) in
 		FileAbs.add_var fileAbs x x_ax Effects.none;
