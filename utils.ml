@@ -68,7 +68,17 @@ struct
 
 	(* Convert from CIL's Pretty.doc to our PP.doc *)
 	let pp e :PP.doc =
-		let e_doc = Cil.d_exp () e in
+		let open Cil in
+		let e_doc =
+			match e with
+			| Lval (Var x,NoOffset)
+			(* HACK to recognize CIL temporary variables *)
+			when x.vname = "tmp"
+			|| String.starts_with x.vname "tmp___" ->
+				x.vdescr
+			| _else ->
+				Cil.d_exp () e
+		in
 		let e_str = Pretty.sprint ~width:60 e_doc in
 		PP.(!^ e_str)
 

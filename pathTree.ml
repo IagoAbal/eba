@@ -218,8 +218,13 @@ let paths_of (fnAbs :FunAbs.t) :t delayed =
 
 type path_dec = Dec of cond * bool
 
-let pp_dec (Dec(Cond(_,l),v)) :PP.doc =
-	let v_doc = PP.bool v in
+let pp_dec (Dec(Cond(e,l),v)) :PP.doc =
+	let e_doc = Utils.Exp.pp e in
+	let v_doc =
+		if v
+		then e_doc
+		else PP.(!^ "!" ++  e_doc)
+	in
 	let l_doc = Utils.Location.pp l in
 	PP.(v_doc ++ !^ "at" ++ l_doc)
 
