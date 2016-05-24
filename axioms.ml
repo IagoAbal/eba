@@ -25,6 +25,23 @@ type name = string
 
 type axiom = Axiom of name * shape scheme
 
+let __builtin_unreachable :axiom =
+	let r0 = Region.meta() in
+	let f1 = EffectVar.bound_with
+		E.(just noret)
+	in
+	let vars =
+		QV.of_list [Var.Effect f1]
+	in
+	let body = Shape.(Ref(r0,Fun {
+		  domain  = []
+		; effects = f1
+		; range   = Bot
+		; varargs = false
+	}))
+	in
+	Axiom("__builtin_unreachable", Scheme.({vars; body}))
+
 (* TODO: This could be automatically inferred by recognizing GCC's `noreturn' attribute. *)
 let assert_fail :axiom =
 	let r0 = Region.meta() in
@@ -169,7 +186,8 @@ let local_bh_disable :axiom =
 let add_axiom tbl (Axiom(fn,sch)) = Hashtbl.add tbl fn sch
 
 let axiom_map : (name,shape scheme) Hashtbl.t  =
-	let tbl = Hashtbl.create 5 in
+	let tbl = Hashtbl.create 11 in
+	add_axiom tbl __builtin_unreachable;
 	add_axiom tbl assert_fail;
 	add_axiom tbl malloc;
 	add_axiom tbl free;
