@@ -260,15 +260,29 @@ let of_instr fnAbs (env :Env.t)
 	   | Some lv -> with_lval_set env z' sf'' sk' lv
 	   end
 	(* Oops, unsound :_( *)
-	| Cil.Asm _ ->
-		Effects.none, K.none
+	| Cil.Asm (_,_,outs,inps,_,_) ->
+		let fx_in, k_in = List.fold_left (fun (fx,k) (_,_,e) ->
+			let _z, fx_e, k_e = of_exp env e in
+			E.(fx + fx_e), K.(k + k_e)
+		) (Effects.none, K.none) inps
+		in
+		let fx_out, k_out = List.fold_left (fun (fx,k) (_,_,lv) ->
+			let _targs, z1, f1, k1 = of_lval env lv in
+			assert(TypeArgs.is_empty _targs);
+			let r, _z0 = Unify.match_ref_shape z1 in
+			Effects.(fx + f1 +. writes r), K.(k + k1)
+		) (Effects.none, K.none) outs
+		in
+		E.(fx_in + fx_out), K.(k_in + k_out)
+
 
 let of_instr_log fnAbs env instr =
 	let loc = Cil.get_instrLoc instr in
 	let f, k = of_instr fnAbs env instr in
-	 Log.debug "Instr effects:\n %s -> %s\n"
+	 Log.debug "Instr effects:\n %s -> %s\n: %s"
 		   (Utils.Location.to_string loc)
-		   (Effects.to_string f);
+		   (Effects.to_string f)
+		   (Utils.string_of_cil Cil.d_instr instr);
 	assert(Regions.for_all Region.is_meta (Effects.regions f));
 	FunAbs.add_loc fnAbs loc f;
 	f, k
