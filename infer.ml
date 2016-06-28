@@ -179,11 +179,10 @@ and with_offset (env: Env.t) (z :shape)
 	(* record field *)
 	| Cil.Field (fi,off) ->
 		(* overall: z ~ ref struct { ...; f : zf; ... } *)
- 		let r, z1 = Unify.match_ref_shape z in
+ 		let _r, z1 = Unify.match_ref_shape z in
 		let zs = Shape.match_struct_shape z1 in
 		let zf = Shape.field zs Cil.(fi.fname) in
-		let z2 = Ref(r,zf) in
-		with_offset env z2 off
+		with_offset env zf off
 
 and of_lhost (env :Env.t)
 	: Cil.lhost -> TypeArgs.t * shape * Effects.t * K.t

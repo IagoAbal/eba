@@ -502,7 +502,7 @@ module rec Shape : sig
 	 * struct variable uninitialized after writing to one of its fields?
 	 *)
 	and of_field memo cache fi =
-		Cil.({ finfo = fi; fshape = of_typ_cache memo cache fi.ftype })
+		Cil.({ finfo = fi; fshape = ref_of_cache memo cache fi.ftype })
 
     and ref_of_cache memo cache ty :t =
     	let z = of_typ_cache memo cache ty in
