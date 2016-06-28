@@ -42,6 +42,16 @@ let pp_upto max sep pp_el els =
 	in
 	separate sep (els_docs @ ending)
 
+let is_zero_arg_proc typ =
+	assert (Cil.isFunctionType typ);
+	let _, args, varargs, _ = Cil.splitFunctionType typ in
+	match args with
+	| None
+	| Some []
+	-> not varargs
+	| _else
+	-> false
+
 module Varinfo =
 struct
 

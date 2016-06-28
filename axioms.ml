@@ -62,7 +62,19 @@ let mk_default x :Shape.t Scheme.t =
 		let fp = mk_default_fp x z in
 		let _,ff,_ = Shape.get_fun z in
 		ignore (EffectVar.add_lb fp ff); (* in-place update of meta eff-var *)
-		let z_fv = Shape.fv_of z in
+		let z_fv =
+			(** THINK but for now assume that if an extern declaration takes no
+			 * argument but returns some object, then that object is always the
+			 * same. This is a bit ad-hoc to deal with some Linux functions such
+			 * as `get_current'.
+			 *
+			 * We should find a general solution that offers a good compromise
+			 * when inferring the I/O relation of extern functions.
+			 *)
+			if Utils.is_zero_arg_proc x_ty
+			then Vars.just_effect ff
+			else Shape.fv_of z
+		in
 		let sch = Scheme.quantify z_fv z in
 		Scheme.({sch with body = Shape.new_ref_to sch.body })
 	else
