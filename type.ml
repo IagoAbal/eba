@@ -158,6 +158,7 @@ module rec Shape : sig
 	val is_fun : t -> bool
 
     (* THINK: Should it be Unify.match_fun ? *)
+	val get_ref : t -> t
 	val get_fun : t -> args * EffectVar.t * result
 	val get_ref_fun : t -> args * EffectVar.t * result
 
@@ -580,18 +581,24 @@ module rec Shape : sig
 		| Fun _ -> true
 		| _else -> false
 
+	let get_ref = function
+		| Ref(_,z) -> z
+		| __other__ ->
+			Log.error "%s is not a ref shape\n" (Shape.to_string __other__);
+			Error.panic_with("Shape.get_ref")
+
     let get_fun : t -> args * EffectVar.t * t = function
     	| Fun {domain; effects; range} ->
 			domain, effects, range
     	| __other__ ->
 			Log.error "%s is not a function shape\n" (Shape.to_string __other__);
-			Error.panic()
+			Error.panic_with("Shape.get_fun")
 
 	let get_ref_fun = function
 		| Ref(_,z)  -> get_fun z
 		| __other__ ->
 			Log.error "%s is not a ref-to-function shape\n" (Shape.to_string __other__);
-			Error.panic()
+			Error.panic_with("Shape.get_ref_fun")
 
     (** Substitute variables with variables.
 	 *
@@ -1902,6 +1909,7 @@ and Constraints : sig
 	type t = Vars.t (* TODO: Maybe EffectVarSet.t ? *)
 	val none : t
 	val add : EffectVar.t -> Effects.t -> t -> t
+	val add_to_fun : Shape.t -> Effects.t -> unit (* THINK: put this into Shape? *)
 	val (+) : t -> t -> t
 	val minus : t -> t -> t
 	val cardinal : t -> int
@@ -1917,6 +1925,10 @@ and Constraints : sig
     let add x f k =
 		let _ = EffectVar.add_lb (Effects.remove (Effects.Var x) f) x in
 		Vars.add_effect x k
+
+	let add_to_fun fz fp =
+		let _,ff,_ = Shape.get_fun fz in
+		ignore (EffectVar.add_lb fp ff) (* in-place update of meta eff-var *)
 
     let (+) = Vars.(+)
 
@@ -1935,6 +1947,7 @@ and Scheme : sig
 	val of_shape : Shape.t -> Shape.t t
 	val of_varinfo : Cil.varinfo -> Shape.t t
 	(* TODO: Should return Effects.t *)
+	val get_fun : Shape.t t -> Shape.t
 	val effects_of_fun : Shape.t t -> Effects.e Effects.certainty Enum.t
 	val fresh_binding : Cil.varinfo -> Cil.varinfo * Shape.t t
 	val fresh_bindings : Cil.varinfo list -> (Cil.varinfo * Shape.t t) list
@@ -1969,6 +1982,14 @@ end = struct
 	let regions_in sch = Shape.regions_in sch.body
 	let of_shape z = { vars = QV.empty; body = z }
 	let of_varinfo x = of_shape (Shape.of_varinfo x)
+
+	(* TODO: This should return fun_shape *)
+	let get_fun sch =
+		assert (QV.is_empty sch.vars);
+		let z = Shape.get_ref sch.body in
+		assert (Shape.is_fun z);
+		z
+
 	let effects_of_fun sch =
 		let _,f,_ = Shape.get_ref_fun sch.body in
 		Effects.enum_principal (EffectVar.lb_of f)
@@ -2062,6 +2083,8 @@ and QV : sig
 
 	val empty : t
 
+	val is_empty : t -> bool
+
 	val length : t -> int
 
 	val enum_shapes : t -> Shape.var Enum.t
@@ -2101,6 +2124,8 @@ end = struct
 
 	let length {shapes; regions; effects} =
 		A.(length shapes + length regions + length effects)
+
+	let is_empty qv = length qv = 0
 
 	let enum_shapes qv = A.enum qv.shapes
 

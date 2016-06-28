@@ -518,12 +518,19 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GVarDecl (x,_) -> (* var declaration / fun prototype *)
 		let xn = Cil.(x.vname) in
 		Log.debug "Variable declaration: %s\n" xn;
-		let env' = Env.fresh_if_absent x env in
+		let env', sch_opt = Env.fresh_if_absent x env in
+		if Cil.(isFunctionType x.vtype)
+		then begin
+			sch_opt |> Option.may (fun x_sch ->
+				let x_shp = Scheme.get_fun x_sch in
+				Constraints.add_to_fun x_shp (Axioms.find_partial x x_shp)
+			)
+		end;
 		FileAbs.add_var fileAbs x (Env.find x env') Effects.none;
 		env', k
 	| Cil.GVar (x,ii,_) -> (* variable definition *)
 		let xn = Cil.(x.vname) in
-		let env' = Env.fresh_if_absent x env in
+		let env', _ = Env.fresh_if_absent x env in
 		Log.debug "Global variable %s : %s\n"
 			xn Scheme.(to_string (Env.find x env'));
 		(* THINK: move to of_init *)
@@ -550,7 +557,11 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 			then Env.remove fn env
 			else env
 		in
-		let env'' = Env.fresh_if_absent fn env' in
+		let env'', sch_opt = Env.fresh_if_absent fn env' in
+		sch_opt |> Option.may (fun fn_sch ->
+			let fn_shp = Scheme.get_fun fn_sch in
+			Constraints.add_to_fun fn_shp (Axioms.find_partial fn fn_shp)
+		);
 		(* infer *)
 		let sch, k1, fnAbs = of_fundec env'' k fd in
 		Log.info "Function %s : %s\n" Cil.(fn.vname) Scheme.(to_string sch);

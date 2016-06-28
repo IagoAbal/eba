@@ -9,4 +9,5 @@ exception Panic of string
 
 let panic () = raise (Panic("fatal error"))
 
+(* TODO: Turn it into a `printf' style function. *)
 let panic_with msg = raise (Panic(msg))

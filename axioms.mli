@@ -5,6 +5,8 @@ open Type
 
 val find : Cil.varinfo -> shape scheme
 
+val find_partial : Cil.varinfo -> shape -> Effects.t
+
 val footprint :
 	Cil.exp
 	-> shape

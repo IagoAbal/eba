@@ -38,17 +38,17 @@ let (+::) : Cil.varinfo * shape scheme -> t -> t =
 let (+>) (env1 :t) (env2 :t) :t =
 	VarMap.fold VarMap.add env1 env2
 
-let with_fresh x env :t =
+let with_fresh x env :t * shape scheme =
 	let z = Shape.ref_of Cil.(x.vtype) in
 	let sch = Scheme.({ vars = QV.empty; body = z }) in
-	(x,sch) +:: env
+	(x,sch) +:: env, sch
 
-let fresh_if_absent x env :t =
+let fresh_if_absent x env :t * shape scheme option =
 	match find_opt x env with
 	| None ->
-		with_fresh x env
+		with_fresh x env |> Tuple.Tuple2.map2 Option.some
 	| Some _ ->
-		env
+		env, None
 
 let of_bindings :(Cil.varinfo * shape scheme) list -> t =
 	VarMap.of_enum % List.enum

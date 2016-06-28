@@ -26,7 +26,7 @@ val (+>) : t -> t -> t
 	is created where it is given an appropriate generic shape
 	(see [Shape.ref_of]).
  *)
-val fresh_if_absent : Cil.varinfo -> t -> t
+val fresh_if_absent : Cil.varinfo -> t -> t * shape scheme option
 
 val of_bindings : (Cil.varinfo * shape scheme) list -> t
 

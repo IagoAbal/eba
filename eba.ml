@@ -14,12 +14,12 @@ type checks = {
 let run_checks checks file fileAbs :unit =
 	let run_check_file in_file =
 		 in_file file fileAbs |> L.iter (function errmsg ->
-			Printf.printf "Potential BUG found:\n%s\n\n" errmsg
+			Printf.printf "\nPotential BUG found:\n%s\n\n" errmsg
 		 )
 	in
 	let run_check_fun fd in_func =
 		 in_func fileAbs fd |> L.iter (function errmsg ->
-			Printf.printf "Potential BUG found:\n%s\n\n" errmsg
+			Printf.printf "\nPotential BUG found:\n%s\n\n" errmsg
 		 )
 	in
 	let fds = Cil.(file.globals) |> List.filter_map (function
