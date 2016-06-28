@@ -14,10 +14,6 @@ FILES[] =
     structs
     infer
     pathTree
-    fileChecker
-    checkUninitFile
-    fiChecker
-    checkFiNoret
     flow1Checker
     checkUninitFlow1
     flow2Checker

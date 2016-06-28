@@ -6,17 +6,11 @@ module L = LazyList
 
 type checks = {
 	  chk_uninit : bool
-	; chk_noret  : bool
 	; chk_dlock  : bool
 	; chk_birq   : bool
 }
 
 let run_checks checks file fileAbs :unit =
-	let run_check_file in_file =
-		 in_file file fileAbs |> L.iter (function errmsg ->
-			Printf.printf "\nPotential BUG found:\n%s\n\n" errmsg
-		 )
-	in
 	let run_check_fun fd in_func =
 		 in_func fileAbs fd |> L.iter (function errmsg ->
 			Printf.printf "\nPotential BUG found:\n%s\n\n" errmsg
@@ -28,12 +22,8 @@ let run_checks checks file fileAbs :unit =
 	)
 	in
 	(* THINK: Too much if-ery? *)
-	if checks.chk_uninit
-	then run_check_file CheckUninitFile.in_file;
 	fds |> List.iter (fun fd ->
 		Log.debug "Analyzing function %s\n" Cil.(fd.svar.vname);
-		if checks.chk_noret
-		then run_check_fun fd CheckFiNoret.in_func;
 		if checks.chk_uninit
 		then run_check_fun fd CheckUninitFlow1.in_func;
 		if checks.chk_dlock
@@ -72,7 +62,7 @@ let infer_files verbosity
 		flag_no_inlining
 		flag_no_dce flag_no_dfe
 		flag_safe_casts flag_externs_do_nothing
-		chk_uninit chk_noret chk_dlock chk_birq
+		chk_uninit chk_dlock chk_birq
 		files =
 	Log.color_on();
 	Log.set_log_level (log_level_of_int verbosity);
@@ -83,7 +73,7 @@ let infer_files verbosity
 	Opts.Set.dfe (not flag_no_dfe);
 	Opts.Set.unsafe_casts (not flag_safe_casts);
 	Opts.Set.externs_do_nothing flag_externs_do_nothing;
-	let checks = { chk_uninit; chk_noret; chk_dlock; chk_birq } in
+	let checks = { chk_uninit; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
 let files = Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE")
@@ -125,10 +115,6 @@ let check_uninit =
 	let doc = "Check for uses of variables before initialization" in
 	Arg.(value & flag & info ["U"; "uninit"] ~doc)
 
-let check_noret =
-	let doc = "Check for undeclared non-returning functions" in
-	Arg.(value & flag & info ["N"; "noret"] ~doc)
-
 let check_dlock =
 	let doc = "Check for double locking" in
 	Arg.(value & flag & info ["L"; "dlock"] ~doc)
@@ -145,7 +131,7 @@ let cmd =
 		$ flag_gcstats $ flag_saveabs
 		$ flag_no_inlining $ flag_no_dce $ flag_no_dfe
 		$ flag_safe_casts $ flag_externs_do_nothing
-		$ check_uninit $ check_noret $ check_dlock $ check_birq
+		$ check_uninit $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man
 
