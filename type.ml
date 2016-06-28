@@ -480,16 +480,16 @@ module rec Shape : sig
 		| None ->
 			match List.Exceptionless.assoc name cache with
 			| None ->
-				(* THINK how to accommodate the following properly:
-				 * Sometimes you get a extern struct declaration, plus
-				 * a number of function prototypes referring to it. The
-				 * struct is never declared, but it's actually never
-				 * used, so that's OK. Here we opt for just returning
-				 * a dummy struct. See Struct module.
+				(* THINK how to handle extern struct declarations when we
+				 * add support for inter-file analysis. Usually there are also
+				 * a number of function prototypes referring to these structs.
+				 * But that's OK, because such structs are never actually used. 
+				 *
+				 * For now, just return a dummy struct.
 				 *)
-				Log.error "of_typ: struct not found in cache: %s" name;
+				if ci.cdefined
+				then Log.error "of_typ: struct defined but not found in cache: %s" name;
 				{ sinfo = ci; sargs = TypeArgs.empty; sparams = QV.empty; fields = [] }
-				(* Error.panic_with("struct not in cache: " ^ name) *)
 			| Some z -> z
 		end
 
