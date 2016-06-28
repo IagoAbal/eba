@@ -166,6 +166,8 @@ module rec Shape : sig
 	(** Look up a field in a struct shape. *)
 	val field : cstruct -> name -> t
 
+	val list_fields : cstruct -> field list
+
 	val vsubst_var : Subst.t -> var -> var
 
 	val vsubst : Subst.t -> t -> t
@@ -643,6 +645,10 @@ module rec Shape : sig
 		with Not_found ->
 			Log.error "Struct %s has no field %s" PP.(to_string (pp_struct s)) fn;
 			Error.panic_with("Shape.field")
+
+	let list_fields s =
+		let field_inst = struct_inst s in
+		List.map (fun fz -> {fz with fshape = field_inst fz.fshape}) s.fields
 
 	let rec regions_in z =
 		let f _ x = x in

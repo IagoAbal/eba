@@ -16,12 +16,37 @@ let def_rw_of_param pz :E.t =
 	| __else_______ ->
 		Error.panic_with "def_rw_of_shape: not a ref shape"
 
+(* TODO: Write in terns of a yet-to-be-written Shape fold *)
+(* TODO: This is very specific to Linux ... *)
+let def_lock_of_param ?(bound=3) pz :E.t =
+	let open Shape in
+	let open Cil in
+	let rec loop d ef = function
+	| Ref(r,Struct z)
+		when z.sinfo.cname = "spinlock"
+		  || z.sinfo.cname = "mutex"   ->
+		E.(ef +. locks r +. unlocks r)
+	| Ref(_,z)
+	| Ptr z    -> loop d ef z
+	| Struct z when d > 0 ->
+		list_fields z |> List.fold_left (fun ef1 fz ->
+			loop (d-1) ef1 fz.fshape
+		) ef
+	| __else___ ->
+		E.none
+	in
+	E.weaken(loop bound E.none pz)
+
 let mk_default_fp x xz :E.t =
 	if Opts.externs_do_nothing()
 	then E.none
 	else
 		let args,_,_ = Shape.get_fun xz in
-		E.sum (List.map def_rw_of_param args)
+		E.(
+			(sum (List.map def_rw_of_param args))
+			 +
+			(sum (List.map def_lock_of_param args))
+		)
 
 (* Generate default axiom for an extern declaration.
  * NB: Only function axioms are generalized (value restriction).
