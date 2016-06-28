@@ -176,6 +176,8 @@ module rec Shape : sig
 
 	val fully_read : t -> Effects.t
 
+	val fully_RW : t -> Effects.t
+
 	val pp_var : var -> PP.doc
 
 	val pp_fun : fun_shape -> PP.doc
@@ -652,6 +654,12 @@ module rec Shape : sig
 		|> regions_in
 		|> Regions.enum
 		|> Enum.map Effects.(fun r -> just (reads r))
+		|> Effects.(Enum.fold (+) none)
+
+	let fully_RW z = z
+		|> regions_in
+		|> Regions.enum
+		|> Enum.map Effects.(fun r -> just (reads r) +. writes r)
 		|> Effects.(Enum.fold (+) none)
 
     end

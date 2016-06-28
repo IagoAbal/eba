@@ -71,7 +71,7 @@ let infer_files verbosity
 		flag_gcstats flag_saveabs
 		flag_no_inlining
 		flag_no_dce flag_no_dfe
-		flag_safe_casts
+		flag_safe_casts flag_externs_do_nothing
 		chk_uninit chk_noret chk_dlock chk_birq
 		files =
 	Log.color_on();
@@ -82,6 +82,7 @@ let infer_files verbosity
 	Opts.Set.dce (not flag_no_dce);
 	Opts.Set.dfe (not flag_no_dfe);
 	Opts.Set.unsafe_casts (not flag_safe_casts);
+	Opts.Set.externs_do_nothing flag_externs_do_nothing;
 	let checks = { chk_uninit; chk_noret; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
@@ -116,6 +117,10 @@ let flag_safe_casts =
 	let doc = "Fail on potentially unsafe casts." in
 	Arg.(value & flag & info ["safe-casts"] ~doc)
 
+let flag_externs_do_nothing =
+	let doc = "Ignore potential side-effects of extern functions." in
+	Arg.(value & flag & info ["externs-do-nothing"] ~doc)
+
 let check_uninit =
 	let doc = "Check for uses of variables before initialization" in
 	Arg.(value & flag & info ["U"; "uninit"] ~doc)
@@ -139,7 +144,7 @@ let cmd =
 		$ verbose
 		$ flag_gcstats $ flag_saveabs
 		$ flag_no_inlining $ flag_no_dce $ flag_no_dfe
-		$ flag_safe_casts
+		$ flag_safe_casts $ flag_externs_do_nothing
 		$ check_uninit $ check_noret $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man

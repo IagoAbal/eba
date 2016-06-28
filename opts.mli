@@ -13,6 +13,8 @@ module Set : sig
 
 	val unsafe_casts : bool -> unit
 
+	val externs_do_nothing : bool -> unit
+
 end
 
 module Get : sig
@@ -28,5 +30,7 @@ module Get : sig
 	val dce : unit -> bool
 
 	val unsafe_casts : unit -> bool
+
+	val externs_do_nothing : unit -> bool
 
 end

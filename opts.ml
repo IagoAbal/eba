@@ -6,6 +6,7 @@ type copts = {
 	mutable dce : bool;
 	mutable dfe : bool;
 	mutable unsafe_casts : bool;
+	mutable externs_do_nothing : bool;
 }
 
 let opts : copts = {
@@ -15,6 +16,7 @@ let opts : copts = {
 	dce = true;
 	dfe = true;
 	unsafe_casts = true;
+	externs_do_nothing = false;
 }
 
 module Set =
@@ -32,6 +34,8 @@ struct
 
 	let unsafe_casts v = opts.unsafe_casts <- v
 
+	let externs_do_nothing v = opts.externs_do_nothing <- v
+
 end
 
 module Get =
@@ -48,5 +52,7 @@ struct
 	let dfe () = opts.dfe
 
 	let unsafe_casts () = opts.unsafe_casts
+
+	let externs_do_nothing () = opts.externs_do_nothing
 
 end
