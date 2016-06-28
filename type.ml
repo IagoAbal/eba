@@ -1047,6 +1047,7 @@ and Effects : sig
 		   | IrqsOff
 		   | BhsOn
 		   | BhsOff
+		   | Sleep
 
 	type 'a certainty = private Must of 'a | May of 'a
 
@@ -1158,6 +1159,8 @@ and Effects : sig
 
 	val zonk : t -> t
 
+	val pp_e : e -> PP.doc
+
 	val pp : t -> PP.doc
 
 	val to_string : t -> string
@@ -1174,6 +1177,7 @@ and Effects : sig
 		   | IrqsOff
 		   | BhsOn
 		   | BhsOff
+		   | Sleep
 
 	type 'a certainty = Must of 'a | May of 'a
 
@@ -1436,6 +1440,7 @@ and Effects : sig
 		| IrqsOff  -> PP.(!^ (Utils.purple "irqsoff"))
 		| BhsOn    -> PP.(!^ (Utils.purple "bhson"))
 		| BhsOff   -> PP.(!^ (Utils.purple "bhsoff"))
+		| Sleep    -> PP.(!^ (Utils.purple "sleep"))
 
 	let group_effects : e list -> e list list =
 		let same_kind e1 e2 =

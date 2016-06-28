@@ -208,23 +208,80 @@ end = struct
 
 	type axiom = Axiom of name * mk_effects
 
-	let ax_spin_lock :axiom =
+	let ax_mutex_lock :axiom =
 		let mk _fn _z = function
 			| [Ref(r1,Ptr(Ref(r2,_)))] ->
-				E.(just (reads r1) +. locks r2)
+				E.(just (reads r1) +. locks r2 + weaken (just Sleep))
 			| _else____________ ->
 				E.none
 		in
-		Axiom("spin_lock", mk)
+		Axiom("mutex_lock", mk)
 
-	let ax_spin_unlock :axiom =
+	let ax_mutex_lock_nested :axiom =
+		let mk _fn _z = function
+			| [Ref(r1,Ptr(Ref(r2,_)));Ref(r3,_)] ->
+				E.(just (reads r1) +. locks r2 +. reads r3 + weaken (just Sleep))
+			| _else____________ ->
+				E.none
+		in
+		Axiom("mutex_lock_nested", mk)
+
+	let ax_mutex_lock_interruptible_nested :axiom =
+		let Axiom(_,mk) = ax_mutex_lock_nested in
+		Axiom("mutex_lock_interruptible_nested", mk)
+
+	let ax_mutex_unlock :axiom =
 		let mk _fn _z = function
 			| [Ref(r1,Ptr(Ref(r2,_)))] ->
 				E.(just (reads r1) +. unlocks r2)
 			| _else____________ ->
 				E.none
 		in
-		Axiom("spin_unlock", mk)
+		Axiom("mutex_unlock", mk)
+
+	let ax_raw_spin_lock :axiom =
+		let mk _fn _z = function
+			| [Ref(r1,Ptr(Ref(r2,_)))] ->
+				E.(just (reads r1) +. locks r2)
+			| _else____________ ->
+				E.none
+		in
+		Axiom("_raw_spin_lock", mk)
+
+	let ax_raw_spin_unlock :axiom =
+		let mk _fn _z = function
+			| [Ref(r1,Ptr(Ref(r2,_)))] ->
+				E.(just (reads r1) +. unlocks r2)
+			| _else____________ ->
+				E.none
+		in
+		Axiom("_raw_spin_unlock", mk)
+
+	let ax__raw_spin_unlock :axiom =
+		let Axiom(_,mk) = ax_raw_spin_unlock in
+		Axiom("__raw_spin_unlock", mk)
+
+	let ax_raw_read_lock :axiom =
+		let mk _fn _z = function
+			| [Ref(r1,Ptr(Ref(r2,_)))] ->
+				E.(just (reads r1) +. locks r2)
+			| _else____________ ->
+				E.none
+		in
+		Axiom("_raw_read_lock", mk)
+
+	let ax_raw_read_unlock :axiom =
+		let mk _fn _z = function
+			| [Ref(r1,Ptr(Ref(r2,_)))] ->
+				E.(just (reads r1) +. unlocks r2)
+			| _else____________ ->
+				E.none
+		in
+		Axiom("_raw_read_unlock", mk)
+
+	let ax__raw_read_unlock :axiom =
+		let Axiom(_,mk) = ax_raw_read_unlock in
+		Axiom("__raw_read_unlock", mk)
 
 	let ax_spin_lock_irq :axiom =
 		let mk _fn _z = function
@@ -233,7 +290,7 @@ end = struct
 			| _else____________ ->
 				E.none
 		in
-		Axiom("spin_lock_irq", mk)
+		Axiom("_raw_spin_lock_irq", mk)
 
 	let ax_spin_unlock_irq :axiom =
 		let mk _fn _z = function
@@ -242,7 +299,20 @@ end = struct
 			| _else____________ ->
 				E.none
 		in
-		Axiom("spin_unlock_irq", mk)
+		Axiom("__raw_spin_unlock_irq", mk)
+
+	let ax_raw_spin_lock_irqsave :axiom =
+		let Axiom(_,mk) = ax_spin_lock_irq in
+		Axiom("_raw_spin_lock_irqsave",mk)
+
+	let ax_raw_spin_unlock_irqrestore :axiom =
+		let mk _fn _z = function
+			| [Ref(r1,Ptr(Ref(r2,_)));Ref(r3,_)] ->
+				E.(just (reads r1) +. unlocks r2 +. IrqsOn +. reads r3)
+			| _else____________ ->
+				E.none
+		in
+		Axiom("_raw_spin_unlock_irqrestore",mk)
 
 	let ax_spin_lock_bh :axiom =
 		let mk _fn _z = function
@@ -251,7 +321,7 @@ end = struct
 			| _else____________ ->
 				E.none
 		in
-		Axiom("spin_lock_bh", mk)
+		Axiom("_raw_spin_lock_bh", mk)
 
 	let ax_spin_unlock_bh :axiom =
 		let mk _fn _z = function
@@ -260,16 +330,26 @@ end = struct
 			| _else____________ ->
 				E.none
 		in
-		Axiom("spin_unlock_bh", mk)
+		Axiom("_raw_spin_unlock_bh", mk)
 
 	let add_axiom tbl (Axiom(fn,mk)) = Hashtbl.add tbl fn mk
 
 	let axiom_map : (name,mk_effects) Hashtbl.t  =
-		let tbl = Hashtbl.create 11 in
-		add_axiom tbl ax_spin_lock;
-		add_axiom tbl ax_spin_unlock;
+		let tbl = Hashtbl.create 19 in
+		add_axiom tbl ax_mutex_lock;
+		add_axiom tbl ax_mutex_lock_nested;
+		add_axiom tbl ax_mutex_lock_interruptible_nested;
+		add_axiom tbl ax_mutex_unlock;
+		add_axiom tbl ax_raw_spin_lock;
+		add_axiom tbl ax_raw_spin_unlock;
+		add_axiom tbl ax__raw_spin_unlock;
+		add_axiom tbl ax_raw_read_lock;
+		add_axiom tbl ax_raw_read_unlock;
+		add_axiom tbl ax__raw_read_unlock;
 		add_axiom tbl ax_spin_lock_irq;
 		add_axiom tbl ax_spin_unlock_irq;
+		add_axiom tbl ax_raw_spin_lock_irqsave;
+		add_axiom tbl ax_raw_spin_unlock_irqrestore;
 		add_axiom tbl ax_spin_lock_bh;
 		add_axiom tbl ax_spin_unlock_bh;
 		tbl
