@@ -339,7 +339,7 @@ let inline fileAbs callerAbs = function
 		Log.info "INLINING was not possible :-(";
 		None
 
-let inline_check_loop ~bound ~guard ~target ~trace ~file =
+let inline_check_loop ~bound ~filter ~guard ~target ~trace ~file =
 	let rec loop stack b caller step =
 		if b = 0
 		then begin
@@ -350,7 +350,9 @@ let inline_check_loop ~bound ~guard ~target ~trace ~file =
 		| None             -> None
 		| Some (fnAbs, pt) ->
 			let fd = FunAbs.fundec fnAbs in
-			let ps = reachable false pt ~guard ~target ~trace in
+			let ps = reachable false pt ~guard ~target ~trace
+			       |> filter
+			in
 			go stack b fnAbs step fd ps
 	and go stack b func step fd ps = match L.get ps with
 	| None ->
@@ -369,10 +371,10 @@ let inline_check_loop ~bound ~guard ~target ~trace ~file =
 	in
 	loop [] bound
 
-let inline_check ~bound ~guard ~target ~trace ~file ~caller step =
+let inline_check ~bound ~filter ~guard ~target ~trace ~file ~caller step =
 	let path_of_stack stack = List.fold_left (fun p2 (fd1,stp1,p1) ->
 			[PEcall(fd1,stp1,p1@p2)]
 		) [] stack
 	in
-	inline_check_loop ~bound ~guard ~target ~trace ~file caller step
+	inline_check_loop ~bound ~filter ~guard ~target ~trace ~file caller step
 		|> Option.map (Tuple2.map2 path_of_stack)

@@ -91,6 +91,7 @@ val reachable :
  *)
 val inline_check :
 	bound:int ->
+	filter:((step * path * t delayed) LazyList.t -> (step * path * t delayed) LazyList.t) ->
 	guard:st_pred -> target:st_pred ->
 	trace:(Effects.t -> bool) ->
 	file:FileAbs.t -> caller:FunAbs.t ->

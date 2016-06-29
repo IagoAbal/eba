@@ -105,7 +105,7 @@ module Make (A :Spec) : S = struct
 		let ef = FunAbs.effect_of fnAbs l2 in
 		if Opts.fp_inlining() && not (A.testP2 st ef)
 		then begin
-			let confirmed = inline_check ~bound:3
+			let confirmed = inline_check ~bound:3 ~filter:nodup
 				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
 				~trace:(A.trace st)
 				~file:fileAbs ~caller:fnAbs
