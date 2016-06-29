@@ -16,6 +16,8 @@ module Spec = struct
 		then L.(cons () nil)
 		else L.nil
 
+	let trace _ _ = false
+
 	let testP1 _ _ = true
 
 	let testQ1 _ ef = E.(mem_must IrqsOff ef) && not E.(mem IrqsOn ef)

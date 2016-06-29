@@ -15,6 +15,7 @@ module type Spec = sig
 	val name : string
 	val doc_of_bug : region -> PP.doc
 	val select : FileAbs.t -> Cil.fundec -> shape scheme -> FunAbs.t -> bug L.t
+	val trace : bug -> Effects.t -> bool
 	(* TODO: We may allow to accumulate state *)
 	val testP : bug -> Effects.t -> bool
 	val testQ : bug -> Effects.t -> bool
@@ -43,7 +44,11 @@ module Make (A :Spec) : S = struct
 	))
 
 	let search fd pt r : report L.t =
-		let lps = reachable false pt ~guard:(A.testP r) ~target:(A.testQ r) in
+		let lps = reachable false pt
+			~guard:(A.testP r)
+			~target:(A.testQ r)
+			~trace:(A.trace r)
+		in
 		let mk_report (s,p,_) = {
 			fn = Cil.(fd.svar);
 			reg = r;

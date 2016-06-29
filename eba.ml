@@ -64,6 +64,8 @@ let infer_files verbosity
 		flag_safe_casts flag_externs_do_nothing
 		chk_uninit chk_dlock chk_birq
 		files =
+	(* CIL: do not print #line directives. *)
+	Cil.lineDirectiveStyle := None;
 	Log.color_on();
 	Log.set_log_level (log_level_of_int verbosity);
 	Opts.Set.gc_stats flag_gcstats;

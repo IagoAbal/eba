@@ -22,6 +22,8 @@ module Spec = struct
 		(* TODO: Define list : Regions.t -> Region.t LazyList.t *)
 		L.of_enum (Regions.enum target)
 
+	let trace r ef = Regions.mem r E.(regions ef)
+
 	let may_write r ef :bool = E.(mem (writes r) ef)
 
 	let not_writes r ef :bool = not (may_write r ef)

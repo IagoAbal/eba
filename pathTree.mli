@@ -9,6 +9,7 @@ open Type
  *)
 type step = Stmt of Cil.instr list * Cil.location
           | Test of Cil.exp        * Cil.location
+          | Goto of Cil.label      * Cil.location (* source *) * Cil.location (* target *)
           | Ret  of Cil.exp option * Cil.location
 
 val loc_of_step : step -> Cil.location
@@ -49,9 +50,17 @@ val paths_of : FunAbs.t -> t delayed
 
 type st_pred = Effects.t -> bool
 
-type path_dec = Dec of cond * bool
+type path = path_entry list
 
-type path = path_dec list
+and path_entry =
+	(** Decision. *)
+	| PEdec of cond * bool (* value *)
+	(** Program step. *)
+	| PEstep of step * step_kind
+	(** Function call.  *)
+	| PEcall of Cil.fundec * step * path
+
+and step_kind = SKmatch | SKctx
 
 val pp_path : path -> PP.doc
 
@@ -70,6 +79,7 @@ val reachable :
 	t delayed ->
 	guard:st_pred ->
 	target:st_pred ->
+	trace:(Effects.t -> bool) ->
 	(step * path * t delayed) LazyList.t
 
 (**
@@ -82,7 +92,8 @@ val reachable :
 val inline_check :
 	bound:int ->
 	guard:st_pred -> target:st_pred ->
+	trace:(Effects.t -> bool) ->
 	file:FileAbs.t -> caller:FunAbs.t ->
 	step ->
-	(step * path * t delayed) option
+	(step * path) option
 

@@ -15,6 +15,8 @@ module Spec = struct
 		let locked = E.(regions(filter is_locks feffects)) in
 		L.of_enum (Regions.enum locked)
 
+	let trace r ef = Regions.mem r E.(regions ef)
+
 	let may_unlock r ef :bool =	E.(mem (unlocks r) ef)
 
 	let not_unlocks r ef :bool = not (may_unlock r ef)
@@ -32,7 +34,6 @@ module Spec = struct
 	let testP2 = not_unlocks
 
 	let testQ2_weak = may_lock
-
 
 	type bug = Region.t
 

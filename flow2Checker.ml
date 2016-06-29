@@ -27,6 +27,8 @@ module type Spec = sig
 	type st
 	(** Selects initial contexts *)
 	val select : FileAbs.t -> Cil.fundec -> shape scheme -> FunAbs.t -> st L.t
+	(** Flags steps of interest for triaging. *)
+	val trace : st -> Effects.t -> bool
 	(** Tests *)
 	val testP1 : st -> Effects.t -> bool
 	val testQ1 : st -> Effects.t -> bool
@@ -98,19 +100,22 @@ module Make (A :Spec) : S = struct
 	 * g_2. The solution is to use a weaker Q2, but inline calls to g_i and find
 	 * out whether the double lock acquisition is possible.
 	 *)
-	let filter_fp_notP2 fileAbs fnAbs st = L.filter_map (fun ((s2,_,_) as p2) ->
+	let filter_fp_notP2 fileAbs fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
 		let l2 = loc_of_step s2 in
 		let ef = FunAbs.effect_of fnAbs l2 in
 		if Opts.fp_inlining() && not (A.testP2 st ef)
 		then begin
-			let confirmed = inline_check ~bound:1
-			~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
-			~file:fileAbs ~caller:fnAbs
-			s2
+			let confirmed = inline_check ~bound:3
+				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
+				~trace:(A.trace st)
+				~file:fileAbs ~caller:fnAbs
+				s2
 			in
-			Option.bind confirmed (fun _ -> Some p2)
+			Option.bind confirmed (fun (s2',p2') ->
+				Some (s2',p2@p2',pt2)
+			)
 		end
-		else Some p2
+		else Some t2
 		)
 
 	let search fileAbs fnAbs fd pt st =
@@ -128,6 +133,7 @@ module Make (A :Spec) : S = struct
 		let ps1 = reachable true pt
 			~guard:(A.testP1 st)
 			~target:(A.testQ1 st)
+			~trace:(A.trace st)
 		in
 		(* ... => X(p2 EU q2)
 		 * - Once a complete match Q1-->Q2 is found it usually makes little
@@ -139,6 +145,7 @@ module Make (A :Spec) : S = struct
 			let ps2 = reachable false pt'
 				~guard:(A.testP2 st)
 				~target:(A.testQ2_weak st)
+				~trace:(A.trace st)
 			in
 			(* THINK: ps2_nodup just in strict mode? *)
 			let ps3 = ps2 |> nodup |> filter_fp_notP2 fileAbs fnAbs st in
