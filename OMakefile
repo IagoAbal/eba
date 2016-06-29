@@ -41,3 +41,8 @@ clean:
   rm -f \
      $(filter-proper-targets $(glob $(addsuffix .*, $(FILES)))) \
      libeba.cma libeba.cmxa libeba.a eba.cma eba.cmxa eba.a
+
+.PHONY: test
+test:
+  export TESTDIR=`pwd`/test
+  cram test/linux.t
