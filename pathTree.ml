@@ -108,6 +108,13 @@ type t = Nil
        | Seq of step * Effects.t * t delayed
        | If of t delayed * t delayed
 
+
+let lenv_from_step fnAbs lenv = function
+| (Stmt(is,_), ef) ->
+	Lenv.from_stmt fnAbs lenv ef is
+| _else___________ ->
+	lenv
+
 (* Group instructions by location
  *
  * CIL instruction blocks include instructions coming from
@@ -120,7 +127,7 @@ type t = Nil
  * instructions (which can go into Utils) and the other
  * takes the effects.
  *)
-let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
+let group_by_loc fnAbs lenv instrs :(step * E.t) list * E.t * Lenv.t =
 	assert(not(List.is_empty instrs));
 	let iss = List.group_consecutive Utils.instr_same_loc instrs in
 	let stmts = iss |> List.map (fun is ->
@@ -129,11 +136,11 @@ let group_by_loc fnAbs instrs :(step * E.t) list * E.t =
 		let ef = FunAbs.effect_of fnAbs loc in
 		stmt, ef
 	) in
-	let effects = List.fold_left (fun acc (_,ef) ->
-		E.(ef + acc)
-	) E.none stmts
+	let effects, lenv' = List.fold_left (fun (acc,le) ((_,ef) as step) ->
+		E.(ef + acc), lenv_from_step fnAbs le step
+	) (E.none,lenv) stmts
 	in
-	stmts, effects
+	stmts, effects, lenv'
 
 (* IF-branching is limited to 2 ^ c_MAX_IF_COUNT
  *
@@ -161,7 +168,7 @@ let succs_of_if if_node =
 	| [els;thn] -> Some els, thn
 	| _else____ -> Error.panic_with "PathThree.generate(If): more than two succesors"
 
-let rec generate fnAbs visited if_count node :t =
+let rec generate fnAbs visited lenv if_count node :t =
 	let sk = Cil.(node.skind) in
 	match sk with
 	| Cil.Instr [] (* label: e.g. as a result of prepareCFG *)
@@ -169,9 +176,9 @@ let rec generate fnAbs visited if_count node :t =
 	| Cil.Continue _
 	| Cil.Loop _
 	| Cil.Block _ ->
-		generate_if_next fnAbs visited if_count node
+		generate_if_next fnAbs visited lenv if_count node
 	| Cil.Goto(stmt_ref,loc) ->
-		let nxt = fun () -> generate_if_next fnAbs visited if_count node in
+		let nxt = fun () -> generate_if_next fnAbs visited lenv if_count node in
 		let target = !stmt_ref in
 		let target_labels = Cil.(target.labels) in
 		assert (not (List.is_empty target_labels));
@@ -179,11 +186,11 @@ let rec generate fnAbs visited if_count node :t =
 		let dst_loc = Cil.get_stmtLoc Cil.(target.skind) in
 		Seq(Goto(lbl,loc,dst_loc),E.none,nxt)
 	| Cil.Instr instrs ->
-		let iss, ef = group_by_loc fnAbs instrs in
+		let iss, _sumef, lenv' = group_by_loc fnAbs lenv instrs in
 		let next =
 			(* NB: CIL doesn't insert a return if the instr is 'exit'. *)
 			Option.map_default (fun (node',visited') ->
-				fun () -> generate fnAbs visited' if_count node'
+				fun () -> generate fnAbs visited' lenv' if_count node'
 			) (fun () -> Nil) (next_lone visited node)
 		in
 		(List.fold_right (fun (s,ef) nxt ->
@@ -205,20 +212,28 @@ let rec generate fnAbs visited if_count node :t =
 			| None ->
 				fun () -> Nil
 			| Some visited' ->
-				let alt = fun () -> generate fnAbs visited' (if_count+1) node' in
+				let lenv' = Lenv.from_test fnAbs lenv dec e in
+				let alt = fun () -> generate fnAbs visited' lenv' (if_count+1) node' in
 				fun () -> Assume (cond,dec,alt)
 		in
 		(* THINK: What would be the smart strategy when c_MAX_IF_COUNT is reached? *)
 		let if_else_opt, if_then = succs_of_if node in
+		let e_val = Lenv.eval lenv e in
 		let left (* else *) =
-			match if_else_opt with
-			| None -> fun () -> Nil
-			| Some if_else ->
+			match if_else_opt, e_val with
+			| None, _
+			| Some _, Lenv.Dom.NonZero ->
+				fun () -> Nil
+			| Some if_else, _ ->
 				if if_count <= c_MAX_IF_COUNT
 				then take_branch false if_else
 				else fun () -> Nil (* no more branching ! *)
 		in
-		let right (* then *) = take_branch true if_then in
+		let right (* then *) =
+			match e_val with
+			| Lenv.Dom.Zero -> fun () -> Nil
+			| __else_______ -> take_branch true if_then
+		in
 		let test = Test(tkind,e,loc) in
 		let alts = fun () -> If(left,right) in
 		Seq(test,ef,alts)
@@ -228,10 +243,10 @@ let rec generate fnAbs visited if_count node :t =
 	| Cil.TryExcept _ ->
 		Error.panic_with("PathTree.generate: found computed-goto, switch, try-finally or try-except")
 
-and generate_if_next fnAbs visited if_count node =
+and generate_if_next fnAbs visited lenv if_count node =
 	match next_lone visited node with
 	| None                  -> Nil
-	| Some (node',visited') -> generate fnAbs visited' if_count node'
+	| Some (node',visited') -> generate fnAbs visited' lenv if_count node'
 
 (* [Note !noret]
  * We cut off the exploration of a path if we find !noret,
@@ -244,7 +259,7 @@ let paths_of (fnAbs :FunAbs.t) :t delayed =
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> fun () -> Nil
-	| nd0::_ -> fun () -> generate fnAbs Edges.empty 0 nd0
+	| nd0::_ -> fun () -> generate fnAbs Edges.empty Lenv.empty 0 nd0
 
 type path = path_entry list
 

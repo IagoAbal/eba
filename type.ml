@@ -158,7 +158,7 @@ module rec Shape : sig
 	val is_fun : t -> bool
 
     (* THINK: Should it be Unify.match_fun ? *)
-	val get_ref : t -> t
+	val get_ref : t -> Region.t * t
 	val get_fun : t -> args * EffectVar.t * result
 	val get_ref_fun : t -> args * EffectVar.t * result
 
@@ -582,7 +582,7 @@ module rec Shape : sig
 		| _else -> false
 
 	let get_ref = function
-		| Ref(_,z) -> z
+		| Ref(r,z) -> r,z
 		| __other__ ->
 			Log.error "%s is not a ref shape\n" (Shape.to_string __other__);
 			Error.panic_with("Shape.get_ref")
@@ -1991,7 +1991,7 @@ end = struct
 	(* TODO: This should return fun_shape *)
 	let get_fun sch =
 		assert (QV.is_empty sch.vars);
-		let z = Shape.get_ref sch.body in
+		let _, z = Shape.get_ref sch.body in
 		assert (Shape.is_fun z);
 		z
 

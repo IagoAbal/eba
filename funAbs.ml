@@ -36,6 +36,14 @@ let add_var tbl x sch =
 let add_vars tbl =
 	List.iter (fun (x,sch) -> add_var tbl x sch)
 
+let find_var tbl x =
+	Option.map (fun sch ->
+			let open Scheme in
+			assert(QV.is_empty sch.vars);
+			sch.body
+		)
+		(VarMap.Exceptionless.find tbl.vars x)
+
 let add_loc tbl loc eff =
 	Log.debug "Loc -> effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)

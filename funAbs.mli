@@ -20,6 +20,8 @@ val add_var : t -> Cil.varinfo -> shape scheme -> unit
 
 val add_vars : t -> (Cil.varinfo * shape scheme) list -> unit
 
+val find_var : t -> Cil.varinfo -> shape option
+
 val add_loc : t -> Cil.location -> Effects.t -> unit
 
 val add_call : t -> Cil.location -> TypeArgs.t -> unit
