@@ -1,12 +1,17 @@
 
-extern void spin_lock(int *);
-extern void spin_unlock(int *);
+struct spinlock;
+
+extern void _raw_spin_lock(struct spinlock *);
+extern void _raw_spin_unlock(struct spinlock *);
+
+extern void spin_lock(struct spinlock *lock) { _raw_spin_lock(lock); }
+extern void spin_unlock(struct spinlock *lock) { _raw_spin_unlock(lock); }
 
 __attribute__ ((noinline)) int nondet() { return 42; }
 
-int fake_lock = 0;
+struct spinlock fake_lock;
 
-int inode_get_rsv_space(int *i_lock)
+int inode_get_rsv_space(struct spinlock *i_lock)
 {
   spin_lock(i_lock); // (4) ERROR
   // do something
@@ -14,7 +19,7 @@ int inode_get_rsv_space(int *i_lock)
   return 0;
 }
 
-void add_dquot_ref(int *i_lock)
+void add_dquot_ref(struct spinlock *i_lock)
 {
   int reserved = 0;
 
