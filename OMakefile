@@ -3,6 +3,7 @@ PROGRAM = eba
 FILES[] =
     error
     utils
+    cilExtra
     pP
     uniq
     opts

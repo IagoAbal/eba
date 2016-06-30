@@ -3,19 +3,21 @@ open Batteries
 
 open Type
 
+type test_kind = TWhile of bool (* enter branch *) | TOther
+
 (* A computation step: either the execution of an statement;
  * the evaluation of a branch condition; or the return of
  * a function (possibly) with an expression.
  *)
 type step = Stmt of Cil.instr list * Cil.location
-          | Test of Cil.exp        * Cil.location
+          | Test of test_kind * Cil.exp * Cil.location
           | Goto of Cil.label      * Cil.location (* source *) * Cil.location (* target *)
           | Ret  of Cil.exp option * Cil.location
 
 val loc_of_step : step -> Cil.location
 
 (** If condition. *)
-type cond = Cond of Cil.exp * Cil.location
+type cond = Cond of test_kind * Cil.exp * Cil.location
 
 type 'a delayed = unit -> 'a
 

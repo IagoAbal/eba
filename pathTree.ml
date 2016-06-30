@@ -12,6 +12,7 @@ open Batteries
 
 open Type
 
+module CE = CilExtra
 module L = LazyList
 
 module Edges = Map.Make(
@@ -66,16 +67,20 @@ let next_lone visited node : (Cil.stmt * visited) option =
 	| [next] -> Some next
 	| _other -> Error.panic()
 
+type test_kind = TWhile of bool (* enter branch *) | TOther
+
 type step = Stmt of Cil.instr list * Cil.location
-          | Test of Cil.exp        * Cil.location
+          | Test of test_kind * Cil.exp * Cil.location
           | Goto of Cil.label      * Cil.location (* source *) * Cil.location (* target *)
           | Ret  of Cil.exp option * Cil.location
 
-type cond = Cond of Cil.exp * Cil.location
+type cond = Cond of test_kind * Cil.exp * Cil.location
+
+let tk_of_option = Option.map_default (fun b -> TWhile b) TOther
 
 let loc_of_step = function
 	| Stmt(_,loc)
-	| Test(_,loc)
+	| Test(_,_,loc)
 	| Goto(_,loc,_)
 	| Ret (_,loc) ->
 		loc
@@ -83,14 +88,18 @@ let loc_of_step = function
 let pp_step = function
 | Stmt(is,_)         ->
 	PP.(semi_sep (List.map (fun i -> !^ (Utils.string_of_cil Cil.d_instr i)) is))
-| Test(e,_)    		 ->
-	PP.(!^ (Utils.string_of_cil Cil.d_exp e))
+| Test(tk,e,_)    		 ->
+	let tk_doc = match tk with
+	| TWhile _ -> PP.(!^ " (loop)")
+	| TOther -> PP.empty
+	in
+	PP.(Utils.Exp.pp e + tk_doc)
 | Goto (lbl,_,dst) ->
 	PP.(!^ "goto" ++ !^ (Utils.string_of_cil Cil.d_label lbl) ++ !^ "->" ++ Utils.Location.pp dst)
 | Ret(e_opt,_)       ->
 	match e_opt with
 	| None -> PP.(!^ "return")
-	| Some e -> PP.(!^ "return" ++ !^ (Utils.string_of_cil Cil.d_exp e))
+	| Some e -> PP.(!^ "return" ++ Utils.Exp.pp e)
 
 type 'a delayed = unit -> 'a
 
@@ -188,7 +197,8 @@ let rec generate fnAbs visited if_count node :t =
 		let ef = FunAbs.effect_of fnAbs loc in
 		Seq(ret,ef,fun () -> Nil)
 	| Cil.If (e,_,_,loc) ->
-		let cond = Cond(e,loc) in
+		let tkind = tk_of_option (CE.is_while_test node) in
+		let cond = Cond(tkind,e,loc) in
 		let ef = FunAbs.effect_of fnAbs loc in
 		let take_branch dec node' =
 			match take_edge visited node node' with
@@ -209,7 +219,7 @@ let rec generate fnAbs visited if_count node :t =
 				else fun () -> Nil (* no more branching ! *)
 		in
 		let right (* then *) = take_branch true if_then in
-		let test = Test(e,loc) in
+		let test = Test(tkind,e,loc) in
 		let alts = fun () -> If(left,right) in
 		Seq(test,ef,alts)
 	| Cil.ComputedGoto _
@@ -247,11 +257,16 @@ and path_entry =
 and step_kind = SKmatch | SKctx
 
 let rec pp_entry :path_entry -> PP.doc = function
-	| PEdec(Cond(e,l),v) ->
+	| PEdec(Cond(tk,e,l),v) ->
+		let tk_doc = match tk with
+		| TOther -> PP.empty
+		| TWhile b when b = v -> PP.(!^ " (enter loop)")
+		| TWhile b -> PP.(!^ " (skip loop)")
+		in
 		let e_doc = Utils.Exp.pp e in
 		let v_doc = PP.(e_doc ++ !^ "->" ++ bool v) in
 		let l_doc = Utils.Location.pp l in
-		PP.(!^ "(?)" ++ l_doc + colon ++ v_doc)
+		PP.(!^ "(?)" ++ l_doc + colon ++ v_doc + tk_doc)
 	| PEstep(step,sk) ->
 		let pmark = match sk with
 			| SKmatch -> "(!)"
