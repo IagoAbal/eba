@@ -36,9 +36,6 @@ module Edges = Map.Make(
  *)
 type visited = int Edges.t
 
-(* No labeled edge can be taken more than c_MAX_TAKEN times in each path. *)
-let c_MAX_TAKEN = 1 (* NB: this seems enough for taking a loop twice *)
-
 let is_labeled node :bool = not Cil.(List.is_empty node.labels)
 
 (* Returns [None] if the transition is disallowed. *)
@@ -46,7 +43,11 @@ let take_edge visited node node' : visited option =
 	let open Cil in
 	let edge = node.sid, node'.sid in
 	match Edges.Exceptionless.find edge visited with
-	| Some n when n >= c_MAX_TAKEN ->
+	(* No labeled edge can be taken more than `loop_limit' times in each path.
+	 * THINK: Should we always allow transitions to CIL label while_break?
+	 * NB: if just 1 then a goto jumping back to a point before a loop would prevent taking the loop again.
+	 *)
+	| Some n when n >= 1 + Opts.loop_limit() ->
 		Log.warn "Cut off search at %s (-> %s %s): edge taken too many (%d) times!"
 			(Utils.Location.to_string Cil.(get_stmtLoc node.skind))
 			(Utils.Location.to_string Cil.(get_stmtLoc node'.skind))
@@ -152,15 +153,6 @@ let group_by_loc fnAbs lenv instrs :step list * E.t * Lenv.t =
 	in
 	steps, effects, lenv'
 
-(* IF-branching is limited to 2 ^ c_MAX_IF_COUNT
- *
- * Note that in pathological cases a function may have too many paths
- * to be explored. Eg. for N sequential if statements, there are 2^N
- * paths. Another source of path explosion are switch statements
- * inside a loop.
- *)
-let c_MAX_IF_COUNT = 10
-
 (**
  * NB: Empty if-then blocks such as
  *
@@ -235,7 +227,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 				let alt = fun () -> generate fnAbs visited' lenv' (if_count+1) node' in
 				fun () -> Assume (cond,dec,alt)
 		in
-		(* THINK: What would be the smart strategy when c_MAX_IF_COUNT is reached? *)
+		(* THINK: What would be the smart strategy when `branch_limit' is reached? *)
 		let if_else_opt, if_then = succs_of_if node in
 		let e_val = Lenv.eval lenv e in
 		let left (* else *) =
@@ -248,7 +240,14 @@ let rec generate fnAbs visited lenv if_count node :t =
 					(Utils.string_of_cil Cil.d_exp e);
 				fun () -> Nil
 			| Some if_else, _ ->
-				if if_count <= c_MAX_IF_COUNT
+				(* IF-branching is limited to 2 ^ branch_limit
+				 *
+				 * Note that in pathological cases a function may have too many paths
+				 * to be explored. Eg. for N sequential if statements, there are 2^N
+				 * paths. Another source of path explosion are switch statements
+				 * inside a loop.
+				 *)
+				if if_count <= Opts.branch_limit()
 				then take_branch false if_else
 				else begin
 					Log.warn "Cut off search at %s: too many (%d) ifS!" (Utils.Location.to_string loc) if_count;

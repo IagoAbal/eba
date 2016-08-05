@@ -61,9 +61,8 @@ let log_level_of_int = function
 
 let infer_files verbosity
 		flag_gcstats flag_saveabs
-		flag_no_inlining
-		flag_no_dce flag_no_dfe
-		flag_safe_casts flag_externs_do_nothing
+		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
+		flag_no_inlining flag_no_path_check opt_loop_limit opt_branch_limit
 		chk_uninit chk_dlock chk_birq
 		files =
 	(* CIL: do not print #line directives. *)
@@ -72,15 +71,20 @@ let infer_files verbosity
 	Log.set_log_level (log_level_of_int verbosity);
 	Opts.Set.gc_stats flag_gcstats;
 	Opts.Set.save_abs flag_saveabs;
-	Opts.Set.fp_inlining (not flag_no_inlining);
 	Opts.Set.dce (not flag_no_dce);
 	Opts.Set.dfe (not flag_no_dfe);
 	Opts.Set.unsafe_casts (not flag_safe_casts);
 	Opts.Set.externs_do_nothing flag_externs_do_nothing;
+	Opts.Set.fp_inlining (not flag_no_inlining);
+	Opts.Set.path_check (not flag_no_path_check);
+	Opts.Set.loop_limit opt_loop_limit;
+	Opts.Set.branch_limit opt_branch_limit;
 	let checks = { chk_uninit; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
 let files = Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE")
+
+(* General *)
 
 (* TODO: Write a Cmdliner.converter for Log.log_level *)
 let verbose =
@@ -95,9 +99,7 @@ let flag_saveabs =
 	let doc = "Save effect abstraction to an .abs file." in
 	Arg.(value & flag & info ["save-abs"] ~doc)
 
-let flag_no_inlining =
-	let doc = "Do not inline function calls." in
-	Arg.(value & flag & info ["no-inlining"] ~doc)
+(* Type inferrer*)
 
 let flag_no_dce =
 	let doc = "Do not eliminate dead code." in
@@ -114,6 +116,26 @@ let flag_safe_casts =
 let flag_externs_do_nothing =
 	let doc = "Ignore potential side-effects of extern functions." in
 	Arg.(value & flag & info ["externs-do-nothing"] ~doc)
+
+(* Model checker *)
+
+let flag_no_inlining =
+	let doc = "Do not inline function calls." in
+	Arg.(value & flag & info ["no-inlining"] ~doc)
+
+let flag_no_path_check =
+	let doc = "Do not check path consistency." in
+	Arg.(value & flag & info ["no-path-check"] ~doc)
+
+let opt_loop_limit =
+  let doc = "Take up to $(docv) loop iterations." in
+  Arg.(value & opt int 1 & info ["loop-limit"] ~docv:"N" ~doc)
+
+let opt_branch_limit =
+  let doc = "Take up to $(docv) branch decisions." in
+  Arg.(value & opt int 15 & info ["branch-limit"] ~docv:"N" ~doc)
+
+(* Bug chekers *)
 
 let check_uninit =
 	let doc = "Check for uses of variables before initialization" in
@@ -133,8 +155,8 @@ let cmd =
 	Term.(pure infer_files
 		$ verbose
 		$ flag_gcstats $ flag_saveabs
-		$ flag_no_inlining $ flag_no_dce $ flag_no_dfe
-		$ flag_safe_casts $ flag_externs_do_nothing
+		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
+		$ flag_no_inlining $ flag_no_path_check $ opt_loop_limit $ opt_branch_limit
 		$ check_uninit $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man

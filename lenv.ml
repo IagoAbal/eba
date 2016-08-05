@@ -1,3 +1,5 @@
+(* FUTURE: Common interface, but several implementations with different trade-offs. *)
+
 open Batteries
 
 open Type
@@ -83,11 +85,11 @@ let kill_by_region lenv r =
 (* Evaluation of expressions under the abstraction *)
 (***************************************************)
 
-let rec eval lenv : exp -> Dom.t = function
+let rec eval_exp lenv : exp -> Dom.t = function
 | Lval (Var x,NoOffset) ->
 	eval_var lenv x
 | UnOp(LNot,e,_) ->
-	Dom.lnot (eval lenv e)
+	Dom.lnot (eval_exp lenv e)
 | BinOp(Ne,Lval(Var x,NoOffset),e,_)
 | BinOp(Ne,e,Lval(Var x,NoOffset),_) ->
 	eval_ne lenv x e
@@ -127,23 +129,28 @@ and eval_lt lenv x = function
 | _else__________ ->
 	Dom.Dunno
 
+let eval lenv exp =
+	if Opts.path_check()
+	then eval_exp lenv exp
+	else Dom.Dunno
+
 (*******************************************************************)
 (* Refining the abstraction from control-flow tests and statements *)
 (*******************************************************************)
 
-let rec from_test fnAbs lenv v = function
+let rec from_exp fnAbs lenv v = function
 | Lval (Var x,NoOffset) ->
 	gen fnAbs lenv x v
 | UnOp(LNot,e,_) ->
-	from_test fnAbs lenv (not v) e
+	from_exp fnAbs lenv (not v) e
 (* | BinOp(Eq,e1,e2,_) -> *)
 | BinOp(Ne,Lval(Var x,NoOffset),e,_)
 | BinOp(Ne,e,Lval(Var x,NoOffset),_) ->
-	from_test_ne fnAbs lenv v x e
+	from_ne fnAbs lenv v x e
 | __else________________ ->
 	lenv
 
-and from_test_ne fnAbs lenv v x = function
+and from_ne fnAbs lenv v x = function
 | Const(CInt64(i,_,_)) when i = Int64.zero ->
 	gen fnAbs lenv x v (* x != 0 or else x == 0 *)
 | Const(CInt64(i,_,_)) when not v && i <> Int64.zero ->
@@ -182,3 +189,8 @@ let from_stmt fnAbs lenv ef = function
 (* Otherwise (asm) kill any variable that has been updated. *)
 | __else_____________________ ->
 	kill_updated fnAbs lenv ef
+
+let from_test fnAbs lenv v exp =
+	if Opts.path_check()
+	then from_exp fnAbs lenv v exp
+	else lenv
