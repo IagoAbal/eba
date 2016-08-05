@@ -1,6 +1,7 @@
 open Batteries
 
 open Type
+open Abs
 
 open Cil
 
@@ -53,7 +54,7 @@ let empty = { vfacts = VarMap.empty; vmonit = RegionMap.empty }
  * NB: For now, only local variables are tracked.
  *)
 let gen fnAbs lenv x v =
-	match FunAbs.find_var fnAbs x with
+	match AFun.find_var fnAbs x with
 	| None    -> lenv
 	| Some xz ->
 		let r, _ = Shape.get_ref xz in
@@ -62,7 +63,7 @@ let gen fnAbs lenv x v =
 		}
 
 let kill_by_var fnAbs lenv x =
-	match FunAbs.find_var fnAbs x with
+	match AFun.find_var fnAbs x with
 	| None    -> lenv
 	| Some xz ->
 		let r, _ = Shape.get_ref xz in

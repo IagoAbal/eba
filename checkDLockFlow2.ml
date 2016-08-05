@@ -2,6 +2,7 @@
 open Batteries
 
 open Type
+open Abs
 
 module L = LazyList
 
@@ -11,7 +12,7 @@ module Spec = struct
 	type st = Region.t
 
 	let select fileAbs fd fsch fnAbs =
-		let feffects = FunAbs.sum fnAbs in
+		let feffects = AFun.sum fnAbs in
 		let locked = E.(regions(filter is_locks feffects)) in
 		L.of_enum (Regions.enum locked)
 

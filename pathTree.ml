@@ -11,6 +11,7 @@
 open Batteries
 
 open Type
+open Abs
 
 module CE = CilExtra
 module L = LazyList
@@ -142,7 +143,7 @@ let group_by_loc fnAbs lenv instrs :step list * E.t * Lenv.t =
 	let iss = List.group_consecutive Utils.instr_same_loc instrs in
 	let steps = iss |> List.map (fun is ->
 		let loc = Cil.get_instrLoc (List.hd is) in
-		let ef = FunAbs.effect_of fnAbs loc in
+		let ef = AFun.effect_of fnAbs loc in
 		{ kind = Stmt is; effs = ef; sloc = loc; }
 	) in
 	let effects, lenv' = List.fold_left (fun (acc,le) step ->
@@ -214,7 +215,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 			else fun () -> Seq(s,nxt)
 		) iss next) ()
 	| Cil.Return(e_opt,loc) ->
-		let ef = FunAbs.effect_of fnAbs loc in
+		let ef = AFun.effect_of fnAbs loc in
 		let ret = {
 			kind = Ret e_opt;
 			effs = ef;
@@ -224,7 +225,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 	| Cil.If (e,_,_,loc) ->
 		let tkind = tk_of_option (CE.is_while_test node) in
 		let cond = Cond(tkind,e,loc) in
-		let ef = FunAbs.effect_of fnAbs loc in
+		let ef = AFun.effect_of fnAbs loc in
 		let take_branch dec node' =
 			match take_edge visited node node' with
 			| None ->
@@ -287,8 +288,8 @@ and generate_if_next fnAbs visited lenv if_count node =
  * are free of that kind of side-effects, thus we just need
  * to check it for the `Instr' case.
  *)
-let paths_of (fnAbs :FunAbs.t) :t delayed =
-	let fd = FunAbs.fundec fnAbs in
+let paths_of (fnAbs :AFun.t) :t delayed =
+	let fd = AFun.fundec fnAbs in
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> fun () -> Nil
@@ -393,29 +394,32 @@ and keep_searching ks ~guard ~target ~trace step t' =
 
 (* *************** Inlining *************** *)
 
-let inline fileAbs callerAbs step =
+let inline callerAbs step =
 	match step.kind with
-	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),_,_)])
-	when FileAbs.has_fun fileAbs fn ->
-		Log.info "INLINING call to %s" Cil.(fn.vname);
-		let targs = Option.get(FunAbs.args_of_call callerAbs step.sloc) in
-		let fnAbs = FileAbs.inst_fun fileAbs fn targs in
-		Some (fnAbs, paths_of fnAbs)
+	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),_,_)]) ->
+		begin match AFun.call callerAbs fn step.sloc with
+		| None ->
+			Log.warn "COULD NOT INLINE call to %s" Cil.(fn.vname);
+			None
+		| Some fnAbs ->
+			Log.info "INLINING call to %s" Cil.(fn.vname);
+			Some (fnAbs, paths_of fnAbs)
+		end
 	| _else ->
-		Log.info "INLINING was not possible :-(";
+		Log.info "COULD NOT INLINE :-(";
 		None
 
-let inline_check_loop ~bound ~filter ~guard ~target ~trace ~file =
+let inline_check_loop ~bound ~filter ~guard ~target ~trace =
 	let rec loop stack b caller step =
 		if b = 0
 		then begin
 			Log.info "INLINE_CHECK exhausted :-/";
 			None
 		end
-		else match inline file caller step with
+		else match inline caller step with
 		| None             -> None
 		| Some (fnAbs, pt) ->
-			let fd = FunAbs.fundec fnAbs in
+			let fd = AFun.fundec fnAbs in
 			let ps = reachable false pt ~guard ~target ~trace
 			       |> filter
 			in
@@ -436,10 +440,10 @@ let inline_check_loop ~bound ~filter ~guard ~target ~trace ~file =
 	in
 	loop [] bound
 
-let inline_check ~bound ~filter ~guard ~target ~trace ~file ~caller step =
+let inline_check ~bound ~filter ~guard ~target ~trace ~caller step =
 	let path_of_stack stack = List.fold_left (fun p2 (fd1,stp1,p1) ->
 			[PEcall(fd1,stp1,p1@p2)]
 		) [] stack
 	in
-	inline_check_loop ~bound ~filter ~guard ~target ~trace ~file caller step
+	inline_check_loop ~bound ~filter ~guard ~target ~trace caller step
 		|> Option.map (Tuple2.map2 path_of_stack)

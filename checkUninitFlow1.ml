@@ -2,6 +2,7 @@
 open Batteries
 
 open Type
+open Abs
 
 module L = LazyList
 
@@ -15,8 +16,8 @@ module Spec = struct
 		PP.(!^ "Use before initialization" ++ parens(Region.pp r))
 
  	let select fileAbs fd fsch fnAbs =
-		let luninit = FunAbs.uninit_locals fnAbs fd in
- 		let feffects = FunAbs.sum fnAbs in
+		let luninit = AFun.uninit_locals fnAbs fd in
+ 		let feffects = AFun.sum fnAbs in
 		let read = E.(regions(filter is_reads feffects)) in
 		let target = Regions.(inter luninit read) in
 		(* TODO: Define list : Regions.t -> Region.t LazyList.t *)

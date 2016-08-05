@@ -4,6 +4,7 @@ open Batteries
 open Type
 
 open Shape
+open Abs
 
 (* NOTE: We need to keep track of subeffecting constraints almost everywhere.
    When we instantiate a variable we get subeffecting constraints, that must
@@ -25,10 +26,10 @@ let generalize_fun env_fv k r z fnAbs
 	: shape scheme * K.t =
 	let rr = Region.zonk r in
 	let zz = Shape.zonk z in
-	FunAbs.zonk fnAbs;
+	AFun.zonk fnAbs;
 	let z_fv = Shape.fv_of zz in
 	  (* Generalize unconstrained local variables too. *)
-	let abs_fv = FunAbs.fv_of_locals fnAbs in
+	let abs_fv = AFun.fv_of_locals fnAbs in
 	let fd_fv = Vars.(z_fv + abs_fv) in
 	let vs' = DietFV.diff_vars fd_fv env_fv in
 	  (* Prevents incorrect quantification over the function's code region [r]
@@ -38,7 +39,7 @@ let generalize_fun env_fv k r z fnAbs
 	let k1 = K.minus k vs in
 	assert(Vars.for_all Shape.is_meta Region.is_meta EffectVar.is_meta vs);
 	let sch = Scheme.(ref_of rr (quantify vs zz)) in
-	FunAbs.zonk fnAbs;
+	AFun.zonk fnAbs;
 	sch, k1
 
 (* THINK: We should not need to operate on Enum.t *)
@@ -210,7 +211,7 @@ let of_fun fnAbs env loc
 	= function
 	| Cil.Lval ((Cil.Var _x),Cil.NoOffset as fx) ->
 		let args, z, f, k = read_lval env fx in
-		FunAbs.add_call fnAbs loc args;
+		AFun.add_call fnAbs loc args;
 		z, f, k
 	| fn                                         ->
 		of_exp env fn
@@ -283,7 +284,7 @@ let of_instr_log fnAbs env instr =
 		   (Effects.to_string f)
 		   (Utils.string_of_cil Cil.d_instr instr);
 	assert(Regions.for_all Region.is_meta (Effects.regions f));
-	FunAbs.add_loc fnAbs loc f;
+	AFun.add_loc fnAbs loc f;
 	f, k
 
 let sum_f_k : (Effects.t * K.t) list -> Effects.t * K.t
@@ -328,7 +329,7 @@ let split_stmts (stmts :Cil.stmt list) :Cil.stmt list * Cil.stmt list =
 
 (* THINK: If we transform the code with prepareCFG we don't need to handle [Switch] *)
 
-let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
+let rec of_stmtkind (fnAbs :AFun.t) (env :Env.t) (rz :shape)
 	: Cil.stmtkind -> Effects.t * K.t
 	= function
 	| Cil.Instr is ->
@@ -336,11 +337,11 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	| Cil.Return (e_opt,loc)
 	-> begin match e_opt with
 	   | None   ->
-		   FunAbs.add_loc fnAbs loc E.none;
+		   AFun.add_loc fnAbs loc E.none;
 		   Effects.none, K.none
 	   | Some e
 	   -> let z, f, k = of_exp env e in
-		  FunAbs.add_loc fnAbs loc f;
+		  AFun.add_loc fnAbs loc f;
 	      Unify.(z =~ rz);
 	      f, k
 	   end
@@ -348,7 +349,7 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	| Cil.Goto(_,loc)
 	| Cil.Break loc
 	| Cil.Continue loc ->
-		FunAbs.add_loc fnAbs loc E.none;
+		AFun.add_loc fnAbs loc E.none;
 		Effects.none, K.none
 	(* TODO: still unsupported GCC extension *)
 	| Cil.ComputedGoto _
@@ -357,7 +358,7 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	-> let _z0, f0, k0 = of_exp env e in
 	   let      f1, k1 = of_block fnAbs env rz b1 in
 	   let      f2, k2 = of_block fnAbs env rz b2 in
-	   FunAbs.add_loc fnAbs loc f0;
+	   AFun.add_loc fnAbs loc f0;
 	   Effects.(f0 + f1 + f2), K.(k0 + k1 + k2)
 	| Cil.Switch _
 	-> Error.not_implemented("of_stmtkind: switch")
@@ -371,7 +372,7 @@ let rec of_stmtkind (fnAbs :FunAbs.t) (env :Env.t) (rz :shape)
 	| Cil.TryExcept _
 	-> Error.not_implemented("of_stmtkind: try-finally/except")
 
-and of_stmt (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (s :Cil.stmt)
+and of_stmt (fnAbs :AFun.t) (env :Env.t) (rz :shape) (s :Cil.stmt)
 		: E.t * K.t =
 	of_stmtkind fnAbs env rz Cil.(s.skind)
 
@@ -381,7 +382,7 @@ and of_block_must fnAbs env rz b : E.t * K.t =
 	let f2,k2 = sum_f_k_weak (List.map (of_stmt fnAbs env rz) tail) in
 	E.(f1 + f2), K.(k1 + k2)
 
-and of_block (fnAbs :FunAbs.t) (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
+and of_block (fnAbs :AFun.t) (env :Env.t) (rz :shape) (b :Cil.block) : E.t * K.t =
 	 sum_f_k_weak (List.map (of_stmt fnAbs env rz) Cil.(b.bstmts))
 
 (** Marks uninitialized regions for a given type and shape, see [of_var_no_init]. *)
@@ -405,13 +406,13 @@ let of_var_no_init x z :E.t = of_type_no_init Cil.(x.vtype) z
 
 let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
 	let locals_bs = Scheme.fresh_bindings locals in
-	FunAbs.add_vars fnAbs locals_bs;
+	AFun.add_vars fnAbs locals_bs;
 	let ef = List.fold_left (fun ef (x,sch) ->
 		let xf = of_var_no_init x Scheme.(sch.body) in
 		(* THINK: The implicit effects of local declarations may
 		   better be cached in a different way than regular
 		   statement effects. *)
-		FunAbs.add_loc fnAbs Cil.(x.vdecl) xf;
+		AFun.add_loc fnAbs Cil.(x.vdecl) xf;
 		E.(xf + ef)
 	) E.none locals_bs
 	in
@@ -421,14 +422,14 @@ let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
   *
   * NB: env must include the function itself (we assume it can be recursive).
   *)
-let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
-		: shape Scheme.t * K.t * FunAbs.t =
+let of_fundec fileAbs (env :Env.t) (k :K.t) (fd :Cil.fundec)
+		: shape Scheme.t * K.t * AFun.t =
 	(* Eliminate switch, break, and continue ---for now these constructs
 	 * are not particularly interesting.
 	 *)
 	Cil.prepareCFG fd;
 	Cil.computeCFGInfo fd false;
-	let fnAbs = FunAbs.create fd in
+	let fnAbs = AFun.create fileAbs fd in
 	let fn = Cil.(fd.svar) in
 	let shp' = Scheme.((Env.find fn env).body) in (* TODO: should it be instantiated? *)
 	let f_r, shp'' = Unify.match_ref_shape shp' in
@@ -438,7 +439,7 @@ let of_fundec (env :Env.t) (k :K.t) (fd :Cil.fundec)
 		z_args
 	in
 	let env' = Env.with_bindings args_bs env in
-	FunAbs.add_vars fnAbs args_bs;
+	AFun.add_vars fnAbs args_bs;
 	let lf, env'' = of_fundec_locals env' fnAbs Cil.(fd.slocals) in
 	let body = Cil.(fd.sbody) in
 	(* THINK: Maybe we don't need to track constraints but just compute them
@@ -493,7 +494,7 @@ let of_gvar env x z :Cil.init option -> E.t * K.t = function
 		else of_var_no_init x z, K.none
 	| Some init -> of_lv_init env (Cil.var x) init
 
-let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
+let of_global (fileAbs :AFile.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t * K.t = function
 	(* THINK: Do we need to do anything here? CIL has this unrollType helper
 	   that should be enough...
 	 *)
@@ -513,7 +514,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 		Log.debug "Extern/builtin declaration: %s\n" xn;
 		let x_ax = Axioms.find x in
 		let env' = Env.((x,x_ax) +:: env) in
-		FileAbs.add_var fileAbs x x_ax Effects.none;
+		AFile.add_var fileAbs x x_ax Effects.none;
 		env', k
 	| Cil.GVarDecl (x,_) -> (* var declaration / fun prototype *)
 		let xn = Cil.(x.vname) in
@@ -526,7 +527,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 				Constraints.add_to_fun x_shp (Axioms.find_partial x x_shp)
 			)
 		end;
-		FileAbs.add_var fileAbs x (Env.find x env') Effects.none;
+		AFile.add_var fileAbs x (Env.find x env') Effects.none;
 		env', k
 	| Cil.GVar (x,ii,_) -> (* variable definition *)
 		let xn = Cil.(x.vname) in
@@ -536,7 +537,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 		(* THINK: move to of_init *)
 		let sch_x = Env.find x env' in
 		let ef, ki = of_gvar env' x Scheme.(sch_x.body) Cil.(ii.init) in
-		FileAbs.add_var fileAbs x sch_x ef;
+		AFile.add_var fileAbs x sch_x ef;
 		env', K.(k + ki)
 	| Cil.GFun (fd,_) ->
 		let fn = Cil.(fd.svar) in
@@ -563,13 +564,13 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 			Constraints.add_to_fun fn_shp (Axioms.find_partial fn fn_shp)
 		);
 		(* infer *)
-		let sch, k1, fnAbs = of_fundec env'' k fd in
+		let sch, k1, fnAbs = of_fundec fileAbs env'' k fd in
 		Log.info "Function %s : %s\n" Cil.(fn.vname) Scheme.(to_string sch);
 		(* new environment with f generalized,
 		 * this overwrites any previous binding.
 		 *)
 		let env1 = Env.add fn sch env in
-		FileAbs.add_fun fileAbs fn (Env.find fn env1) fnAbs;
+		AFile.add_fun fileAbs fn (Env.find fn env1) fnAbs;
 		env1, k1
 	(* Oooh, we're unsound here :_( *)
 	| Cil.GAsm _
@@ -578,7 +579,7 @@ let of_global (fileAbs :FileAbs.t) (env :Env.t) (k :K.t) : Cil.global -> Env.t *
 	| Cil.GText _ -> env, k
 
 (* TODO: globinit ? *)
-let of_file (file : Cil.file) :FileAbs.t =
+let of_file (file : Cil.file) :AFile.t =
 	(* Dead code elimination: C headers tend to include lots of code that is not
 	 * used by the translation unit, we therefore remove any code that cannot be
 	 * reached from the _extern_ visible code.
@@ -596,7 +597,7 @@ let of_file (file : Cil.file) :FileAbs.t =
 	process_structs file;
 	(* TODO: Here we can read axioms *)
 	let no_globals = List.length Cil.(file.globals) in
-	let fileAbs = FileAbs.create ~no_globals in
+	let fileAbs = AFile.create ~no_globals in
 	let env0 = Env.empty in
 	let k0 = K.none in
 	(* TODO: We need to perform dependency analysis of functions as we do for structs.
@@ -608,5 +609,5 @@ let of_file (file : Cil.file) :FileAbs.t =
 		(env0,k0)
 		Cil.(file.globals)
 	in
-	FileAbs.finalize fileAbs;
+	AFile.finalize fileAbs;
 	fileAbs

@@ -2,6 +2,8 @@
 open Batteries
 open Cmdliner
 
+open Abs
+
 module L = LazyList
 
 type checks = {
@@ -38,7 +40,7 @@ let infer_file checks fn =
 	if Opts.Get.save_abs()
 	then begin
 		let fn_abs = fn ^ ".abs" in
-		File.with_file_out fn_abs (fun out -> FileAbs.fprint out fileAbs)
+		File.with_file_out fn_abs (fun out -> AFile.fprint out fileAbs)
 	end;
 	run_checks checks file fileAbs;
 	if Opts.Get.gc_stats()

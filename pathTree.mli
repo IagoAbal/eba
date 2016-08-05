@@ -2,6 +2,7 @@
 open Batteries
 
 open Type
+open Abs
 
 type test_kind = TWhile of bool (* enter branch *) | TOther
 
@@ -55,7 +56,7 @@ type t = Nil
  * The algorithm inserts [Nil] and backtracks when an already
  * visited state is reached.
  *)
-val paths_of : FunAbs.t -> t delayed
+val paths_of : AFun.t -> t delayed
 
 type st_pred = Effects.t -> bool
 
@@ -103,7 +104,7 @@ val inline_check :
 	filter:((step * path * t delayed) LazyList.t -> (step * path * t delayed) LazyList.t) ->
 	guard:st_pred -> target:st_pred ->
 	trace:(Effects.t -> bool) ->
-	file:FileAbs.t -> caller:FunAbs.t ->
+	caller:AFun.t ->
 	step ->
 	(step * path) option
 

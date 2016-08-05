@@ -2,6 +2,7 @@
 open Batteries
 
 open Type
+open Abs
 open PathTree
 
 module L = LazyList
@@ -14,7 +15,7 @@ module type Spec = sig
 	type bug = Region.t
 	val name : string
 	val doc_of_bug : region -> PP.doc
-	val select : FileAbs.t -> Cil.fundec -> shape scheme -> FunAbs.t -> bug L.t
+	val select : AFile.t -> Cil.fundec -> shape scheme -> AFun.t -> bug L.t
 	val trace : bug -> Effects.t -> bool
 	(* TODO: We may allow to accumulate state *)
 	val testP : bug -> Effects.t -> bool
@@ -22,7 +23,7 @@ module type Spec = sig
 end
 
 module type S = sig
-	val in_func : FileAbs.t -> Cil.fundec -> string L.t
+	val in_func : AFile.t -> Cil.fundec -> string L.t
 end
 
 module Make (A :Spec) : S = struct
@@ -59,7 +60,7 @@ module Make (A :Spec) : S = struct
 
 	let in_func fileAbs fd =
 		let fn = Cil.(fd.svar) in
-		let fsch, fnAbs = FileAbs.find_fun fileAbs fn in
+		let fsch, fnAbs = Option.get(AFile.find_fun fileAbs fn) in
 		let rs = A.select fileAbs fd fsch fnAbs in
 		let pt = paths_of fnAbs in
 		(* NB: Lazy.t is not thread safe so this cannot be parallelized easily. *)

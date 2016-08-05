@@ -7,6 +7,7 @@ open Batteries
 module Opts = Opts.Get
 
 open Type
+open Abs
 open PathTree
 
 module L = LazyList
@@ -26,7 +27,7 @@ module type Spec = sig
 	 *)
 	type st
 	(** Selects initial contexts *)
-	val select : FileAbs.t -> Cil.fundec -> shape scheme -> FunAbs.t -> st L.t
+	val select : AFile.t -> Cil.fundec -> shape scheme -> AFun.t -> st L.t
 	(** Flags steps of interest for triaging. *)
 	val trace : st -> Effects.t -> bool
 	(** Tests *)
@@ -43,7 +44,7 @@ module type Spec = sig
 end
 
 module type S = sig
-	val in_func : FileAbs.t -> Cil.fundec -> string L.t
+	val in_func : AFile.t -> Cil.fundec -> string L.t
 end
 
 module Make (A :Spec) : S = struct
@@ -100,14 +101,14 @@ module Make (A :Spec) : S = struct
 	 * g_2. The solution is to use a weaker Q2, but inline calls to g_i and find
 	 * out whether the double lock acquisition is possible.
 	 *)
-	let filter_fp_notP2 fileAbs fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
+	let filter_fp_notP2 fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
 		if Opts.fp_inlining() && not (A.testP2 st s2.effs)
 		then begin
 			Log.debug "filter_fp_notfP: inlining ...";
 			let confirmed = inline_check ~bound:3 ~filter:nodup
 				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
 				~trace:(A.trace st)
-				~file:fileAbs ~caller:fnAbs
+				~caller:fnAbs
 				s2
 			in
 			Option.bind confirmed (fun (s2',p2') ->
@@ -117,7 +118,7 @@ module Make (A :Spec) : S = struct
 		else (Log.debug "filter_fp_notfP: NOT inlining :-("; Some t2)
 		)
 
-	let search fileAbs fnAbs fd pt st =
+	let search fnAbs fd pt st =
 		(* p1 EU q1
 		 * Even if we find a match, we keep searching for more if P1 holds.
 		 * We want to find all Q1's, otherwise eg if a lock is manipulated
@@ -149,7 +150,7 @@ module Make (A :Spec) : S = struct
 				~trace:(A.trace st)
 			in
 			(* THINK: ps2_nodup just in strict mode? *)
-			let ps3 = ps2 |> nodup |> filter_fp_notP2 fileAbs fnAbs st in
+			let ps3 = ps2 |> nodup |> filter_fp_notP2 fnAbs st in
 			ps3 |> L.map (fun (s2,p2,_) ->
 				{ fn   = Cil.(fd.svar)
 				; bug  = A.bug_of_st st
@@ -165,10 +166,10 @@ module Make (A :Spec) : S = struct
 
 	let in_func fileAbs fd =
 		let fn = Cil.(fd.svar) in
-		let fsch, fnAbs = FileAbs.find_fun fileAbs fn in
+		let fsch, fnAbs = Option.get(AFile.find_fun fileAbs fn) in
 		let seeds = A.select fileAbs fd fsch fnAbs in
 		let pt = paths_of fnAbs in
-		let bugs = seeds |> L.map (search fileAbs fnAbs fd pt) |> L.concat in
+		let bugs = seeds |> L.map (search fnAbs fd pt) |> L.concat in
 		bugs |> L.map string_of_report
 
 end

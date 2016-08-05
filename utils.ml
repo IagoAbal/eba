@@ -26,6 +26,15 @@ let green = colored "0;32"
 let purple = colored "0;35"
 let cyan = colored "0;36"
 
+module Option = struct
+
+	let (<|>) opt1 opt2 = fun x ->
+		match opt1 x with
+		| Some _ as r -> r
+		| None        -> opt2 x
+
+end
+
 let string_of_cil ppr x :string =
 	let x_doc = ppr () x in
 	Pretty.sprint ~width:60 x_doc

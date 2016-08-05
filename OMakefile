@@ -10,8 +10,7 @@ FILES[] =
     type
     axioms
     env
-    funAbs
-    fileAbs
+    abs
     structs
     infer
     lenv

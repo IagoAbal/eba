@@ -2,6 +2,7 @@
 open Batteries
 
 open Type
+open Abs
 
 module L = LazyList
 
@@ -11,7 +12,7 @@ module Spec = struct
 	type st = unit
 
 	let select fileAbs fd fsch fnAbs =
-		let feffects = FunAbs.sum fnAbs in
+		let feffects = AFun.sum fnAbs in
 		if E.(mem IrqsOff feffects && mem BhsOn feffects)
 		then L.(cons () nil)
 		else L.nil
