@@ -349,7 +349,7 @@ let match_at_loc s t = L.cons (s,[PEstep(s,SKmatch)],t) L.nil
 
 let backtrack = L.nil
 
-type st_pred = Effects.t -> bool
+type st_pred = step -> bool
 
 (* TODO: We should return the statement or expression together with the location *)
 
@@ -372,7 +372,7 @@ let rec reachable ks t ~guard ~target ~trace :(step * path * t delayed) L.t =
 		backtrack
 
 and record_if_matches ~target step t' =
-	if target step.effs
+	if target step
 	then begin
 		Log.debug "TARGET reached at %s: %s" (Utils.Location.to_string step.sloc) (string_of_step step);
 		match_at_loc step t'
@@ -380,7 +380,7 @@ and record_if_matches ~target step t' =
 	else L.nil
 
 and keep_searching ks ~guard ~target ~trace step t' =
-	if guard step.effs
+	if guard step
 	then begin
 		(* Log.debug "reachable guard at %s" (Utils.Location.to_string step.sloc); *)
 		if record_step trace step
@@ -431,7 +431,7 @@ let inline_check_loop ~bound ~filter ~guard ~target ~trace =
 	| Some ((step',path',_),_) ->
 		let stack' = (fd,step,path')::stack in
 		(* TODO: Pick the shortest match rather than the first one. *)
-		if guard step'.effs
+		if guard step'
 		then begin
 			Log.info "INLINE_CHECK succeeded :-)";
 			Some (step',stack')

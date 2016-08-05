@@ -18,8 +18,8 @@ module type Spec = sig
 	val select : AFile.t -> Cil.fundec -> shape scheme -> AFun.t -> bug L.t
 	val trace : bug -> Effects.t -> bool
 	(* TODO: We may allow to accumulate state *)
-	val testP : bug -> Effects.t -> bool
-	val testQ : bug -> Effects.t -> bool
+	val testP : bug -> step -> bool
+	val testQ : bug -> step -> bool
 end
 
 module type S = sig

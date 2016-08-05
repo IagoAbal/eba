@@ -3,6 +3,7 @@ open Batteries
 
 open Type
 open Abs
+open PathTree
 
 module L = LazyList
 
@@ -21,11 +22,11 @@ module Spec = struct
 
 	let testP1 _ _ = true
 
-	let testQ1 _ ef = E.(mem_must IrqsOff ef) && not E.(mem IrqsOn ef)
+	let testQ1 _ step = E.(mem_must IrqsOff step.effs) && not E.(mem IrqsOn step.effs)
 
-	let testP2 _ ef = not E.(mem IrqsOn ef)
+	let testP2 _ step = not E.(mem IrqsOn step.effs)
 
-	let testQ2_weak _ ef = E.(mem BhsOn ef)
+	let testQ2_weak _ step = E.(mem BhsOn step.effs)
 
 	type bug = unit
 

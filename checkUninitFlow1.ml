@@ -3,6 +3,7 @@ open Batteries
 
 open Type
 open Abs
+open PathTree
 
 module L = LazyList
 
@@ -33,9 +34,9 @@ module Spec = struct
 
 	let reads_and_not_writes r ef = reads r ef && not_writes r ef
 
-	let testP = not_writes
+	let testP r step = not_writes r step.effs
 
-	let testQ = reads_and_not_writes
+	let testQ r step = reads_and_not_writes r step.effs
 end
 
 module Checker = Flow1Checker.Make(Spec)

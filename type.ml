@@ -1105,6 +1105,8 @@ and Effects : sig
 
 	val is_locks : e -> bool
 
+	val is_unlocks : e -> bool
+
 	val is_uninits : e -> bool
 
 	val just_var : EffectVar.t -> t
@@ -1278,6 +1280,8 @@ and Effects : sig
 	let is_uninit = is_mem Uninit
 
 	let is_locks = is_mem Lock
+
+	let is_unlocks = is_mem Unlock
 
 	let is_uninits = is_mem Uninit
 

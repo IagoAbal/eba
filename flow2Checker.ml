@@ -31,11 +31,11 @@ module type Spec = sig
 	(** Flags steps of interest for triaging. *)
 	val trace : st -> Effects.t -> bool
 	(** Tests *)
-	val testP1 : st -> Effects.t -> bool
-	val testQ1 : st -> Effects.t -> bool
-	val testP2 : st -> Effects.t -> bool
+	val testP1 : st -> step -> bool
+	val testQ1 : st -> step -> bool
+	val testP2 : st -> step -> bool
 	(** Q2 = P2 /\ Q2-weak *)
-	val testQ2_weak : st -> Effects.t -> bool
+	val testQ2_weak : st -> step -> bool
 
 	(** Bug data *)
 	type bug = st
@@ -102,7 +102,7 @@ module Make (A :Spec) : S = struct
 	 * out whether the double lock acquisition is possible.
 	 *)
 	let filter_fp_notP2 fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
-		if Opts.fp_inlining() && not (A.testP2 st s2.effs)
+		if Opts.fp_inlining() && not (A.testP2 st s2)
 		then begin
 			Log.debug "filter_fp_notfP: inlining ...";
 			let confirmed = inline_check ~bound:3 ~filter:nodup

@@ -58,7 +58,7 @@ type t = Nil
  *)
 val paths_of : AFun.t -> t delayed
 
-type st_pred = Effects.t -> bool
+type st_pred = step -> bool
 
 type path = path_entry list
 

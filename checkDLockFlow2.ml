@@ -3,6 +3,7 @@ open Batteries
 
 open Type
 open Abs
+open PathTree
 
 module L = LazyList
 
@@ -30,11 +31,11 @@ module Spec = struct
 
 	let testP1 _ _ = true
 
-	let testQ1 = locks_and_not_unlocks
+	let testQ1 r step = locks_and_not_unlocks r step.effs
 
-	let testP2 = not_unlocks
+	let testP2 r step = not_unlocks r step.effs
 
-	let testQ2_weak = may_lock
+	let testQ2_weak r step = may_lock r step.effs
 
 	type bug = Region.t
 
