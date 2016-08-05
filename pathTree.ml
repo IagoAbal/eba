@@ -69,51 +69,53 @@ let next_lone visited node : (Cil.stmt * visited) option =
 
 type test_kind = TWhile of bool (* enter branch *) | TOther
 
-type step = Stmt of Cil.instr list * Cil.location
-          | Test of test_kind * Cil.exp * Cil.location
-          | Goto of Cil.label      * Cil.location (* source *) * Cil.location (* target *)
-          | Ret  of Cil.exp option * Cil.location
+type step_kind =
+	| Stmt of Cil.instr list
+	| Test of test_kind * Cil.exp
+	| Goto of Cil.label * Cil.location (* target *)
+	| Ret  of Cil.exp option
+
+type step = {
+	kind : step_kind;
+	effs : Effects.t;
+	sloc : Cil.location;
+}
 
 type cond = Cond of test_kind * Cil.exp * Cil.location
 
 let tk_of_option = Option.map_default (fun b -> TWhile b) TOther
 
-let loc_of_step = function
-	| Stmt(_,loc)
-	| Test(_,_,loc)
-	| Goto(_,loc,_)
-	| Ret (_,loc) ->
-		loc
-
-let pp_step = function
-| Stmt(is,_)         ->
-	PP.(semi_sep (List.map (fun i -> !^ (Utils.string_of_cil Cil.d_instr i)) is))
-| Test(tk,e,_)    		 ->
-	let tk_doc = match tk with
-	| TWhile _ -> PP.(!^ " (loop)")
-	| TOther -> PP.empty
-	in
-	PP.(Utils.Exp.pp e + tk_doc)
-| Goto (lbl,_,dst) ->
-	PP.(!^ "goto" ++ !^ (Utils.string_of_cil Cil.d_label lbl) ++ !^ "->" ++ Utils.Location.pp dst)
-| Ret(e_opt,_)       ->
-	match e_opt with
-	| None -> PP.(!^ "return")
-	| Some e -> PP.(!^ "return" ++ Utils.Exp.pp e)
+let pp_step step =
+	match step.kind with
+	| Stmt is ->
+		PP.(semi_sep (List.map (fun i -> !^ (Utils.string_of_cil Cil.d_instr i)) is))
+	| Test(tk,e) ->
+		let tk_doc = match tk with
+		| TWhile _ -> PP.(!^ " (loop)")
+		| TOther -> PP.empty
+		in
+		PP.(Utils.Exp.pp e + tk_doc)
+	| Goto (lbl,dst) ->
+		PP.(!^ "goto" ++ !^ (Utils.string_of_cil Cil.d_label lbl) ++ !^ "->" ++ Utils.Location.pp dst)
+	| Ret e_opt ->
+		match e_opt with
+		| None -> PP.(!^ "return")
+		| Some e -> PP.(!^ "return" ++ Utils.Exp.pp e)
 
 type 'a delayed = unit -> 'a
 
 type t = Nil
        | Assume of cond * bool * t delayed
-       | Seq of step * Effects.t * t delayed
+       | Seq of step * t delayed
        | If of t delayed * t delayed
 
 
-let lenv_from_step fnAbs lenv = function
-| (Stmt(is,_), ef) ->
-	Lenv.from_stmt fnAbs lenv ef is
-| _else___________ ->
-	lenv
+let lenv_from_step fnAbs lenv step =
+	match step.kind with
+	| Stmt is ->
+		Lenv.from_stmt fnAbs lenv (step.effs) is
+	| _else___________ ->
+		lenv
 
 (* Group instructions by location
  *
@@ -127,20 +129,19 @@ let lenv_from_step fnAbs lenv = function
  * instructions (which can go into Utils) and the other
  * takes the effects.
  *)
-let group_by_loc fnAbs lenv instrs :(step * E.t) list * E.t * Lenv.t =
+let group_by_loc fnAbs lenv instrs :step list * E.t * Lenv.t =
 	assert(not(List.is_empty instrs));
 	let iss = List.group_consecutive Utils.instr_same_loc instrs in
-	let stmts = iss |> List.map (fun is ->
+	let steps = iss |> List.map (fun is ->
 		let loc = Cil.get_instrLoc (List.hd is) in
-		let stmt = Stmt(is,loc) in
 		let ef = FunAbs.effect_of fnAbs loc in
-		stmt, ef
+		{ kind = Stmt is; effs = ef; sloc = loc; }
 	) in
-	let effects, lenv' = List.fold_left (fun (acc,le) ((_,ef) as step) ->
-		E.(ef + acc), lenv_from_step fnAbs le step
-	) (E.none,lenv) stmts
+	let effects, lenv' = List.fold_left (fun (acc,le) step ->
+		E.(step.effs + acc), lenv_from_step fnAbs le step
+	) (E.none,lenv) steps
 	in
-	stmts, effects, lenv'
+	steps, effects, lenv'
 
 (* IF-branching is limited to 2 ^ c_MAX_IF_COUNT
  *
@@ -184,7 +185,12 @@ let rec generate fnAbs visited lenv if_count node :t =
 		assert (not (List.is_empty target_labels));
 		let lbl = List.hd target_labels in
 		let dst_loc = Cil.get_stmtLoc Cil.(target.skind) in
-		Seq(Goto(lbl,loc,dst_loc),E.none,nxt)
+		let goto = {
+			kind = Goto(lbl,dst_loc);
+			effs = E.none;
+			sloc = loc;
+		} in
+		Seq(goto,nxt)
 	| Cil.Instr instrs ->
 		let iss, _sumef, lenv' = group_by_loc fnAbs lenv instrs in
 		let next =
@@ -193,16 +199,20 @@ let rec generate fnAbs visited lenv if_count node :t =
 				fun () -> generate fnAbs visited' lenv' if_count node'
 			) (fun () -> Nil) (next_lone visited node)
 		in
-		(List.fold_right (fun (s,ef) nxt ->
+		(List.fold_right (fun s nxt ->
 				(* cut off if !noret is found *)
-			if (E.mem_must E.noret ef)
-			then fun () -> Seq(s,ef,fun () -> Nil)
-			else fun () -> Seq(s,ef,nxt)
+			if (E.mem_must E.noret s.effs)
+			then fun () -> Seq(s,fun () -> Nil)
+			else fun () -> Seq(s,nxt)
 		) iss next) ()
 	| Cil.Return(e_opt,loc) ->
-		let ret = Ret(e_opt,loc) in
 		let ef = FunAbs.effect_of fnAbs loc in
-		Seq(ret,ef,fun () -> Nil)
+		let ret = {
+			kind = Ret e_opt;
+			effs = ef;
+			sloc = loc;
+		} in
+		Seq(ret,fun () -> Nil)
 	| Cil.If (e,_,_,loc) ->
 		let tkind = tk_of_option (CE.is_while_test node) in
 		let cond = Cond(tkind,e,loc) in
@@ -234,9 +244,13 @@ let rec generate fnAbs visited lenv if_count node :t =
 			| Lenv.Dom.Zero -> fun () -> Nil
 			| __else_______ -> take_branch true if_then
 		in
-		let test = Test(tkind,e,loc) in
+		let test = {
+			kind = Test(tkind,e);
+			effs = ef;
+			sloc = loc;
+		} in
 		let alts = fun () -> If(left,right) in
-		Seq(test,ef,alts)
+		Seq(test,alts)
 	| Cil.ComputedGoto _
 	| Cil.Switch _
 	| Cil.TryFinally _
@@ -265,11 +279,11 @@ type path = path_entry list
 
 and path_entry =
 	| PEdec of cond * bool (* value *)
-	| PEstep of step * step_kind
+	| PEstep of step * pe_step_kind
 	(* TODO: Must keep info to print param->arg mapping. *)
 	| PEcall of Cil.fundec * step * path
 
-and step_kind = SKmatch | SKctx
+and pe_step_kind = SKmatch | SKctx
 
 let rec pp_entry :path_entry -> PP.doc = function
 	| PEdec(Cond(tk,e,l),v) ->
@@ -287,7 +301,7 @@ let rec pp_entry :path_entry -> PP.doc = function
 			| SKmatch -> "(!)"
 			| SKctx   -> "(~)"
 		in
-		let l_doc = Utils.Location.pp (loc_of_step step) in
+		let l_doc = Utils.Location.pp step.sloc in
 		PP.(!^ pmark ++ l_doc + colon ++ pp_step step)
 	| PEcall(fd,_step,p') ->
 		let fn = Cil.(fd.svar) in
@@ -304,11 +318,12 @@ let push_dec cond b (l,xs,t) = (l,PEdec(cond,b)::xs,t)
 
 let push_ctx step (l,xs,t) = (l,PEstep(step,SKctx)::xs,t)
 
-let record_step trace step ef =
-	match step with
-	| Goto(Cil.Label(_,_,false),_,_) -> false
-	| Goto(_,_,_) -> true
-	| _else  -> trace ef
+let record_step trace step =
+	match step.kind with
+	(* Do not record CIL-generated goto *)
+	| Goto(Cil.Label(_,_,false),_) -> false
+	| Goto(_,_)                    -> true
+	| _else                        -> trace step.effs
 
 let match_at_loc s t = L.cons (s,[PEstep(s,SKmatch)],t) L.nil
 
@@ -323,10 +338,10 @@ let rec reachable ks t ~guard ~target ~trace :(step * path * t delayed) L.t =
 	match t() with
 	| Assume(cond,b,t') ->
 		map (push_dec cond b) (reachable ks t' guard target trace)
-	| Seq(step,ef,t') ->
-		let ms = record_if_matches ~target step ef t' in
+	| Seq(step,t') ->
+		let ms = record_if_matches ~target step t' in
 		if L.is_empty ms || ks
-		then ms ^@^ keep_searching ks ~guard ~target ~trace step ef t'
+		then ms ^@^ keep_searching ks ~guard ~target ~trace step t'
 		else ms
 	| If(t1,t2) ->
 		let br1 = reachable ks t1 guard target trace in
@@ -336,21 +351,19 @@ let rec reachable ks t ~guard ~target ~trace :(step * path * t delayed) L.t =
 	| __otherwise__ ->
 		backtrack
 
-and record_if_matches ~target step ef t' =
-	let loc = loc_of_step step in
-	if target ef
+and record_if_matches ~target step t' =
+	if target step.effs
 	then begin
-		Log.debug "reachable target at %s" (Utils.Location.to_string loc);
+		Log.debug "reachable target at %s" (Utils.Location.to_string step.sloc);
 		match_at_loc step t'
 	end
 	else L.nil
 
-and keep_searching ks ~guard ~target ~trace step ef t' =
-	let loc = loc_of_step step in
-	if guard ef
+and keep_searching ks ~guard ~target ~trace step t' =
+	if guard step.effs
 	then begin
-		Log.debug "reachable guard at %s" (Utils.Location.to_string loc);
-		if record_step trace step ef
+		Log.debug "reachable guard at %s" (Utils.Location.to_string step.sloc);
+		if record_step trace step
 		then L.map (push_ctx step) (reachable ks t' guard target trace)
 		else reachable ks t' guard target trace
 	end
@@ -358,11 +371,12 @@ and keep_searching ks ~guard ~target ~trace step ef t' =
 
 (* *************** Inlining *************** *)
 
-let inline fileAbs callerAbs = function
-	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),_,_)],loc)
+let inline fileAbs callerAbs step =
+	match step.kind with
+	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),_,_)])
 	when FileAbs.has_fun fileAbs fn ->
 		Log.info "INLINING call to %s" Cil.(fn.vname);
-		let targs = FunAbs.args_of_call callerAbs loc in
+		let targs = Option.get(FunAbs.args_of_call callerAbs step.sloc) in
 		let fnAbs = FileAbs.inst_fun fileAbs fn targs in
 		Some (fnAbs, paths_of fnAbs)
 	| _else ->
@@ -391,8 +405,7 @@ let inline_check_loop ~bound ~filter ~guard ~target ~trace ~file =
 	| Some ((step',path',_),_) ->
 		let stack' = (fd,step,path')::stack in
 		(* TODO: Pick the shortest match rather than the first one. *)
-		let ef = FunAbs.effect_of func (loc_of_step step') in
-		if guard ef
+		if guard step'.effs
 		then begin
 			Log.info "INLINE_CHECK succeeded :-)";
 			Some (step',stack')

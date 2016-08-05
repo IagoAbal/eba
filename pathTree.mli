@@ -9,12 +9,17 @@ type test_kind = TWhile of bool (* enter branch *) | TOther
  * the evaluation of a branch condition; or the return of
  * a function (possibly) with an expression.
  *)
-type step = Stmt of Cil.instr list * Cil.location
-          | Test of test_kind * Cil.exp * Cil.location
-          | Goto of Cil.label      * Cil.location (* source *) * Cil.location (* target *)
-          | Ret  of Cil.exp option * Cil.location
+type step_kind =
+	| Stmt of Cil.instr list
+	| Test of test_kind * Cil.exp
+	| Goto of Cil.label * Cil.location (* target *)
+	| Ret  of Cil.exp option
 
-val loc_of_step : step -> Cil.location
+type step = {
+	kind : step_kind;
+	effs : Effects.t;
+	sloc : Cil.location;
+}
 
 (** If condition. *)
 type cond = Cond of test_kind * Cil.exp * Cil.location
@@ -36,7 +41,7 @@ type 'a delayed = unit -> 'a
  *)
 type t = Nil
        | Assume of cond * bool * t delayed
-       | Seq of step * Effects.t * t delayed
+       | Seq of step * t delayed
        | If of t delayed * t delayed
 
 (* Compute an approximation of all execution paths in a function.
@@ -58,11 +63,11 @@ and path_entry =
 	(** Decision. *)
 	| PEdec of cond * bool (* value *)
 	(** Program step. *)
-	| PEstep of step * step_kind
+	| PEstep of step * pe_step_kind
 	(** Function call.  *)
 	| PEcall of Cil.fundec * step * path
 
-and step_kind = SKmatch | SKctx
+and pe_step_kind = SKmatch | SKctx
 
 val pp_path : path -> PP.doc
 

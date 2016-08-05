@@ -13,6 +13,8 @@ let space = SP.space
 
 let newline = SP.newline
 
+let dot = SP.(!^ ".")
+
 let comma = SP.(!^ ",")
 
 let colon = SP.(!^ ":")

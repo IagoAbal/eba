@@ -60,11 +60,11 @@ module Make (A :Spec) : S = struct
 		A.doc_of_report fn bug loc1 loc2 trace
 	)
 
-	let same_loc (s1,_,_) (s2,_,_) = loc_of_step s1 = loc_of_step s2
+	let same_loc (s1,_,_) (s2,_,_) = Cil.compareLoc s1.sloc s2.sloc = 0
 
 	let cmp_match (s1,p1,_) (s2,p2,_) :int =
-		let l1 = loc_of_step s1 in
-		let l2 = loc_of_step s2 in
+		let l1 = s1.sloc in
+		let l2 = s2.sloc in
 		let lc = compare l1 l2 in
 		(* Order reversed so that L.unique_eq will take the simplest match *)
 		if lc = 0
@@ -101,9 +101,7 @@ module Make (A :Spec) : S = struct
 	 * out whether the double lock acquisition is possible.
 	 *)
 	let filter_fp_notP2 fileAbs fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
-		let l2 = loc_of_step s2 in
-		let ef = FunAbs.effect_of fnAbs l2 in
-		if Opts.fp_inlining() && not (A.testP2 st ef)
+		if Opts.fp_inlining() && not (A.testP2 st s2.effs)
 		then begin
 			let confirmed = inline_check ~bound:3 ~filter:nodup
 				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
@@ -152,8 +150,8 @@ module Make (A :Spec) : S = struct
 			ps3 |> L.map (fun (s2,p2,_) ->
 				{ fn   = Cil.(fd.svar)
 				; bug  = A.bug_of_st st
-				; loc1 = loc_of_step s1
-				; loc2 = loc_of_step s2
+				; loc1 = s1.sloc
+				; loc2 = s2.sloc
 				; trace= p1@p2
 				}
 			)

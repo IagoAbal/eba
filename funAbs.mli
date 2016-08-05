@@ -44,7 +44,7 @@ val regions_of_list : t -> Cil.varinfo list -> Regions.t
 
 val effect_of : t -> Cil.location -> Effects.t
 
-val args_of_call : t -> Cil.location -> TypeArgs.t
+val args_of_call : t -> Cil.location -> TypeArgs.t option
 
 val uninit_locals : t -> Cil.fundec -> Regions.t
 

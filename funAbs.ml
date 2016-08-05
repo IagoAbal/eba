@@ -116,7 +116,7 @@ let effect_of tbl =
 	LocMap.find tbl.effs
 
 let args_of_call tbl =
-	LocMap.find tbl.call
+	LocMap.Exceptionless.find tbl.call
 
 let sum tbl =
 	LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.effs E.none

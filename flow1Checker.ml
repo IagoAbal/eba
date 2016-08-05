@@ -52,7 +52,7 @@ module Make (A :Spec) : S = struct
 		let mk_report (s,p,_) = {
 			fn = Cil.(fd.svar);
 			reg = r;
-			loc = loc_of_step s;
+			loc = s.sloc;
 			trace = p;
 		} in
 		L.map mk_report lps
