@@ -45,9 +45,9 @@ let find_var tbl x =
 		(VarMap.Exceptionless.find tbl.vars x)
 
 let add_loc tbl loc eff =
-	Log.debug "Loc -> effects:\n %s -> %s\n"
+	(* Log.debug "Loc -> effects:\n %s -> %s\n"
 		   (Utils.Location.to_string loc)
-		   (Effects.to_string eff);
+		   (Effects.to_string eff); *)
 	(* TODO: assert(Vars.is_empty (Effects.bv_of eff)); *)
 	LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.effs
 

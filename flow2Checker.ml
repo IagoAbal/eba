@@ -103,6 +103,7 @@ module Make (A :Spec) : S = struct
 	let filter_fp_notP2 fileAbs fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
 		if Opts.fp_inlining() && not (A.testP2 st s2.effs)
 		then begin
+			Log.debug "filter_fp_notfP: inlining ...";
 			let confirmed = inline_check ~bound:3 ~filter:nodup
 				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
 				~trace:(A.trace st)
@@ -113,7 +114,7 @@ module Make (A :Spec) : S = struct
 				Some (s2',p2@p2',pt2)
 			)
 		end
-		else Some t2
+		else (Log.debug "filter_fp_notfP: NOT inlining :-("; Some t2)
 		)
 
 	let search fileAbs fnAbs fd pt st =
@@ -128,6 +129,7 @@ module Make (A :Spec) : S = struct
 		 *     lock       <--- ignored
 		 *     lock
 		 *)
+		Log.info ">>> Searching for first target ...";
 		let ps1 = reachable true pt
 			~guard:(A.testP1 st)
 			~target:(A.testQ1 st)
@@ -140,6 +142,7 @@ module Make (A :Spec) : S = struct
 		 *   we just keep the shortest (first) one wrt [cmp_match].
 		 *)
 		let rss = nodup ps1 |> L.map (fun (s1,p1,pt') ->
+			Log.info ">>> Searching for second target starting with %s ..." (string_of_step s1);
 			let ps2 = reachable false pt'
 				~guard:(A.testP2 st)
 				~target:(A.testQ2_weak st)

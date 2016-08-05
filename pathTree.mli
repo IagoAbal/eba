@@ -21,6 +21,8 @@ type step = {
 	sloc : Cil.location;
 }
 
+val string_of_step : step -> string
+
 (** If condition. *)
 type cond = Cond of test_kind * Cil.exp * Cil.location
 

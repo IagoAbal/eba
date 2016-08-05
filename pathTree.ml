@@ -45,7 +45,13 @@ let take_edge visited node node' : visited option =
 	let open Cil in
 	let edge = node.sid, node'.sid in
 	match Edges.Exceptionless.find edge visited with
-	| Some n when n >= c_MAX_TAKEN -> None
+	| Some n when n >= c_MAX_TAKEN ->
+		Log.warn "Cut off search at %s (-> %s %s): edge taken too many (%d) times!"
+			(Utils.Location.to_string Cil.(get_stmtLoc node.skind))
+			(Utils.Location.to_string Cil.(get_stmtLoc node'.skind))
+			(Utils.string_of_cil Cil.d_stmt node')
+			n;
+		None
 	| _else_______________________ ->
 		let visited' =
 			if is_labeled node'
@@ -101,6 +107,8 @@ let pp_step step =
 		match e_opt with
 		| None -> PP.(!^ "return")
 		| Some e -> PP.(!^ "return" ++ Utils.Exp.pp e)
+
+let string_of_step = PP.to_string % pp_step
 
 type 'a delayed = unit -> 'a
 
@@ -231,17 +239,28 @@ let rec generate fnAbs visited lenv if_count node :t =
 		let e_val = Lenv.eval lenv e in
 		let left (* else *) =
 			match if_else_opt, e_val with
-			| None, _
+			| None, _ ->
+				fun () -> Nil
 			| Some _, Lenv.Dom.NonZero ->
+				Log.debug "%s: skip else branch: %s evaluates to true"
+					(Utils.Location.to_string loc)
+					(Utils.string_of_cil Cil.d_exp e);
 				fun () -> Nil
 			| Some if_else, _ ->
 				if if_count <= c_MAX_IF_COUNT
 				then take_branch false if_else
-				else fun () -> Nil (* no more branching ! *)
+				else begin
+					Log.warn "Cut off search at %s: too many (%d) ifS!" (Utils.Location.to_string loc) if_count;
+					fun () -> Nil (* no more branching ! *)
+				end
 		in
 		let right (* then *) =
 			match e_val with
-			| Lenv.Dom.Zero -> fun () -> Nil
+			| Lenv.Dom.Zero ->
+				Log.debug "%s: skip then branch: %s evaluates to false"
+					(Utils.Location.to_string loc)
+					(Utils.string_of_cil Cil.d_exp e);
+				fun () -> Nil
 			| __else_______ -> take_branch true if_then
 		in
 		let test = {
@@ -354,7 +373,7 @@ let rec reachable ks t ~guard ~target ~trace :(step * path * t delayed) L.t =
 and record_if_matches ~target step t' =
 	if target step.effs
 	then begin
-		Log.debug "reachable target at %s" (Utils.Location.to_string step.sloc);
+		Log.debug "TARGET reached at %s: %s" (Utils.Location.to_string step.sloc) (string_of_step step);
 		match_at_loc step t'
 	end
 	else L.nil
@@ -362,12 +381,15 @@ and record_if_matches ~target step t' =
 and keep_searching ks ~guard ~target ~trace step t' =
 	if guard step.effs
 	then begin
-		Log.debug "reachable guard at %s" (Utils.Location.to_string step.sloc);
+		(* Log.debug "reachable guard at %s" (Utils.Location.to_string step.sloc); *)
 		if record_step trace step
 		then L.map (push_ctx step) (reachable ks t' guard target trace)
 		else reachable ks t' guard target trace
 	end
-	else L.nil
+	else begin
+		Log.debug "UNSAT guard at %s: %s" (Utils.Location.to_string step.sloc) (string_of_step step);
+		L.nil
+	end
 
 (* *************** Inlining *************** *)
 
