@@ -170,11 +170,14 @@ let from_set fnAbs lenv ef x = function
 | __else______________ ->
 	kill_by_var fnAbs lenv x
 
-let from_stmt fnAbs lenv ef = function
-| [Set((Var x,NoOffset),e,_)] ->
-	from_set fnAbs lenv ef x (stripCasts e)
-(* Otherwise kill any variable that has been updated. *)
-| __else_____________________ ->
+let kill_updated fnAbs lenv ef =
 	E.(regions (filter is_writes ef))
 	|> Regions.enum
 	|> Enum.fold kill_by_region lenv
+
+let from_stmt fnAbs lenv ef = function
+| [Set((Var x,NoOffset),e,_)] ->
+	from_set fnAbs lenv ef x (stripCasts e)
+(* Otherwise (asm) kill any variable that has been updated. *)
+| __else_____________________ ->
+	kill_updated fnAbs lenv ef
