@@ -73,7 +73,7 @@ struct
 
 	let vid x = x.vid
 
-	let compare x y = Pervasives.compare x.vid y.vid
+	let compare x y = Int.compare x.vid y.vid
 
 	let equal x y = compare x y = 0
 
@@ -115,7 +115,7 @@ struct
 
 	type t = Cil.location
 
-	let compare = Pervasives.compare
+	let compare = Cil.compareLoc
 
 	let equal x y = compare x y = 0
 

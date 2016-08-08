@@ -22,7 +22,7 @@ module Edges = Map.Make(
 	struct
 		(* Edges are identified by the stmt-id of their source and target. *)
 		type t = int * int
-		let compare = Pervasives.compare
+		let compare = Tuple2.compare ~cmp1:Int.compare ~cmp2:Int.compare
 	end
 )
 

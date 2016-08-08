@@ -1622,7 +1622,7 @@ and Var : sig
 		| Effect f -> EffectVar.uniq_of f
 		| Region r -> Region.uniq_of r
 
-	let compare x y = Pervasives.compare (uniq_of x) (uniq_of y)
+	let compare x y = Uniq.compare (uniq_of x) (uniq_of y)
 
 	let bound_of :t -> t = function
 		| Shape _  -> Shape(Shape.bound_var())

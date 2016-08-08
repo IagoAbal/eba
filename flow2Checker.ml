@@ -63,11 +63,11 @@ module Make (A :Spec) : S = struct
 	let cmp_match (_,s1,p1,_) (_,s2,p2,_) :int =
 		let l1 = s1.sloc in
 		let l2 = s2.sloc in
-		let lc = compare l1 l2 in
+		let lc = Cil.compareLoc l1 l2 in
 		(* Order reversed so that L.unique_eq will take the simplest match *)
 		if lc = 0
 		then
-			let pc = compare (List.length p1) (List.length p2) in
+			let pc = Int.compare (List.length p1) (List.length p2) in
 			if pc = 0
 			then -(compare p1 p2)
 			else -pc
