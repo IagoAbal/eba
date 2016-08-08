@@ -13,6 +13,8 @@ type copts = {
 	mutable loop_limit : int;
 	mutable branch_limit : int;
 	mutable path_check : bool;
+	(* Double-Lock bug checker *)
+	mutable match_lock_exp : bool;
 }
 
 let opts : copts = {
@@ -28,6 +30,8 @@ let opts : copts = {
 	loop_limit = 1;
 	branch_limit = 15;
 	path_check = true;
+
+	match_lock_exp = true;
 }
 
 module Set =
@@ -53,6 +57,8 @@ struct
 
 	let path_check v = opts.path_check <- v
 
+	let match_lock_exp v = opts.match_lock_exp <- v
+
 end
 
 module Get =
@@ -77,5 +83,7 @@ struct
 	let branch_limit () = opts.branch_limit
 
 	let path_check () = opts.path_check
+
+	let match_lock_exp () = opts.match_lock_exp
 
 end

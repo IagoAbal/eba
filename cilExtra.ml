@@ -3,6 +3,36 @@ open Batteries
 
 open Cil
 
+(* Function call arguments *)
+
+let args_of_call : instr -> exp list option = function
+| Call(_,_,args,_) -> Some args
+| _else___________ -> None
+
+let pick_arg_that pred instr : exp option =
+	let open Option.Infix in
+	args_of_call instr >>= List.Exceptionless.find pred
+
+let pick_first_arg instr : exp option =
+	let open Option.Infix in
+	args_of_call instr >>= List.Exceptionless.hd
+
+let arg_is_linux_lock e :bool =
+	match unrollTypeDeep (typeOf e) with
+	| TPtr (TComp(ci,_),_)
+	(* THINK: more? *)
+	when ci.cname = "spinlock" || ci.cname = "mutex" -> true
+	| ty ->
+		false
+
+let find_arg_in_call pick instrs : exp option =
+	List.Exceptionless.find_map pick instrs
+		|> Option.map Cil.stripCasts
+
+let find_linux_lock_in_call : instr list -> exp option =
+	let open Utils.Option in
+	find_arg_in_call (pick_arg_that arg_is_linux_lock <|> pick_first_arg)
+
 (* THINK: Some of the functions below would not be needed if our front-end, CIL,
  * would keep more information about loops; and if EBA would not rely on
  * `Cil.computeCFGInfo', which simplifies the CFG removing `switch'.
@@ -104,6 +134,25 @@ and compareOffset offset1 offset2 =
 		else compareOffset of1 of2
 	| Index _, NoOffset -> 1
 	| Index _, Field _  -> 1
+
+(* Compares the offsets of two expressions for equality.
+ *
+ * NB: We can use this as an heuristic to discard aliasing relationships when
+ * the offsets do not match. Unfortunately, our alias analysis doesn't deal well
+ * with dynamic data structures. Thus we will identify, for instance, `obj->lock'
+ * and `obj->parent->lock' as the same lock object.
+ *)
+let equal_offset exp1 exp2 =
+	match exp1, exp2 with
+	(* Expected case is for instance x.lock or x->lock. *)
+	| Lval(_,o1), Lval(_,o2)
+	| AddrOf(Mem _,o1), AddrOf(Mem _,o2) -> compareOffset o1 o2 = 0
+	(* Function calls that won't be inlined because P2 holds may just pass the
+	 * whole object. eg. &(hi->lock) vs hi, so in this case we compare the lhost.
+	 *)
+	| AddrOf(Mem e1,_), e2   -> compareExp e1 e2 = 0
+	(* Otherwise, we require both expressions to be syntactically equal. *)
+	| _                      -> compareExp exp1 exp2 = 0
 
 (** Has `node' a CIL-generated label starting with `prefix' ? *)
 let is_labeled_with prefix node :bool =

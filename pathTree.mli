@@ -22,7 +22,11 @@ type step = {
 	sloc : Cil.location;
 }
 
+val find_in_stmt : (Cil.instr list -> 'a option) -> step -> 'a option
+
 val string_of_step : step -> string
+
+val pp_step : step -> PP.doc
 
 (** If condition. *)
 type cond = Cond of test_kind * Cil.exp * Cil.location

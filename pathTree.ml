@@ -95,6 +95,11 @@ type cond = Cond of test_kind * Cil.exp * Cil.location
 
 let tk_of_option = Option.map_default (fun b -> TWhile b) TOther
 
+let find_in_stmt finder step =
+	match step.kind with
+	| Stmt(is)   -> finder is
+	| _else_____ -> None
+
 let pp_step step =
 	match step.kind with
 	| Stmt is ->
