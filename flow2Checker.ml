@@ -102,10 +102,10 @@ module Make (A :Spec) : S = struct
 	 * out whether the double lock acquisition is possible.
 	 *)
 	let filter_fp_notP2 fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
-		if Opts.fp_inlining() && not (A.testP2 st s2)
+		if Opts.inline_limit() >= 0 && not (A.testP2 st s2)
 		then begin
 			Log.debug "filter_fp_notfP: inlining ...";
-			let confirmed = inline_check ~bound:3 ~filter:nodup
+			let confirmed = inline_check ~bound:(Opts.inline_limit()) ~filter:nodup
 				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
 				~trace:(A.trace st)
 				~caller:fnAbs

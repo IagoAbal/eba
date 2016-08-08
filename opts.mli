@@ -13,13 +13,13 @@ module Set : sig
 
 	val externs_do_nothing : bool -> unit
 
-	val fp_inlining : bool -> unit
-
-	val path_check : bool -> unit
+	val inline_limit : int -> unit
 
 	val loop_limit : int -> unit
 
 	val branch_limit : int -> unit
+
+	val path_check : bool -> unit
 
 end
 
@@ -37,12 +37,12 @@ module Get : sig
 
 	val externs_do_nothing : unit -> bool
 
-	val fp_inlining : unit -> bool
-
-	val path_check : unit -> bool
+	val inline_limit : unit -> int
 
 	val loop_limit : unit -> int
 
 	val branch_limit : unit -> int
+
+	val path_check : unit -> bool
 
 end

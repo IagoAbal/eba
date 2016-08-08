@@ -9,10 +9,10 @@ type copts = {
 	mutable unsafe_casts : bool;
 	mutable externs_do_nothing : bool;
 	(* Model checker *)
-	mutable fp_inlining : bool;
-	mutable path_check : bool;
+	mutable inline_limit : int;
 	mutable loop_limit : int;
 	mutable branch_limit : int;
+	mutable path_check : bool;
 }
 
 let opts : copts = {
@@ -24,10 +24,10 @@ let opts : copts = {
 	unsafe_casts = true;
 	externs_do_nothing = false;
 
-	fp_inlining = true;
-	path_check = true;
+	inline_limit = 5;
 	loop_limit = 1;
 	branch_limit = 15;
+	path_check = true;
 }
 
 module Set =
@@ -45,13 +45,13 @@ struct
 
 	let externs_do_nothing v = opts.externs_do_nothing <- v
 
-	let fp_inlining v = opts.fp_inlining <- v
-
-	let path_check v = opts.path_check <- v
+	let inline_limit v = opts.inline_limit <- v
 
 	let loop_limit v = opts.loop_limit <- v
 
 	let branch_limit v = opts.branch_limit <- v
+
+	let path_check v = opts.path_check <- v
 
 end
 
@@ -70,11 +70,12 @@ struct
 
 	let externs_do_nothing () = opts.externs_do_nothing
 
-	let fp_inlining () = opts.fp_inlining
-
-	let path_check () = opts.path_check
+	let inline_limit () = opts.inline_limit
 
 	let loop_limit () = opts.loop_limit
 
 	let branch_limit () = opts.branch_limit
+
+	let path_check () = opts.path_check
+
 end

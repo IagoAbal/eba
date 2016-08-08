@@ -62,7 +62,7 @@ let log_level_of_int = function
 let infer_files verbosity
 		flag_gcstats flag_saveabs
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
-		flag_no_inlining flag_no_path_check opt_loop_limit opt_branch_limit
+		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
 		chk_uninit chk_dlock chk_birq
 		files =
 	(* CIL: do not print #line directives. *)
@@ -75,10 +75,10 @@ let infer_files verbosity
 	Opts.Set.dfe (not flag_no_dfe);
 	Opts.Set.unsafe_casts (not flag_safe_casts);
 	Opts.Set.externs_do_nothing flag_externs_do_nothing;
-	Opts.Set.fp_inlining (not flag_no_inlining);
-	Opts.Set.path_check (not flag_no_path_check);
+	Opts.Set.inline_limit opt_inline_limit;
 	Opts.Set.loop_limit opt_loop_limit;
 	Opts.Set.branch_limit opt_branch_limit;
+	Opts.Set.path_check (not flag_no_path_check);
 	let checks = { chk_uninit; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
 
@@ -119,13 +119,9 @@ let flag_externs_do_nothing =
 
 (* Model checker *)
 
-let flag_no_inlining =
-	let doc = "Do not inline function calls." in
-	Arg.(value & flag & info ["no-inlining"] ~doc)
-
-let flag_no_path_check =
-	let doc = "Do not check path consistency." in
-	Arg.(value & flag & info ["no-path-check"] ~doc)
+let opt_inline_limit =
+	let doc = "Inline function calls up to $(docv) times. Provide -1 to prevent inlining but accept some false positives." in
+	Arg.(value & opt int 5 & info ["inline-limit"] ~docv:"N" ~doc)
 
 let opt_loop_limit =
   let doc = "Take up to $(docv) loop iterations." in
@@ -134,6 +130,10 @@ let opt_loop_limit =
 let opt_branch_limit =
   let doc = "Take up to $(docv) branch decisions." in
   Arg.(value & opt int 15 & info ["branch-limit"] ~docv:"N" ~doc)
+
+let flag_no_path_check =
+	let doc = "Do not check path consistency." in
+	Arg.(value & flag & info ["no-path-check"] ~doc)
 
 (* Bug chekers *)
 
@@ -156,7 +156,7 @@ let cmd =
 		$ verbose
 		$ flag_gcstats $ flag_saveabs
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
-		$ flag_no_inlining $ flag_no_path_check $ opt_loop_limit $ opt_branch_limit
+		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
 		$ check_uninit $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man
