@@ -5,6 +5,8 @@ open Type
 open Abs
 open PathTree
 
+open Utils.Option
+
 module L = LazyList
 
 module Spec = struct
@@ -20,13 +22,14 @@ module Spec = struct
 
 	let trace _ _ = false
 
-	let testP1 _ _ = true
+	let testP1 _ _ = Some ()
 
-	let testQ1 _ step = E.(mem_must IrqsOff step.effs) && not E.(mem IrqsOn step.effs)
+	let testQ1 _ step =
+		(E.(mem_must IrqsOff step.effs) && not E.(mem IrqsOn step.effs)) =>? ()
 
-	let testP2 _ step = not E.(mem IrqsOn step.effs)
+	let testP2 _ step = not E.(mem IrqsOn step.effs) =>? ()
 
-	let testQ2_weak _ step = E.(mem BhsOn step.effs)
+	let testQ2_weak _ step = E.(mem BhsOn step.effs) =>? ()
 
 	type bug = unit
 

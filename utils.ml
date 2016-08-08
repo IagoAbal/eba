@@ -33,6 +33,9 @@ module Option = struct
 		| Some _ as r -> r
 		| None        -> opt2 x
 
+	let (=>?) guard v =
+		if guard then Some v else None
+
 end
 
 let string_of_cil ppr x :string =

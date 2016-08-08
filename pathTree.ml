@@ -1,5 +1,7 @@
 (* Keep it simple here, just basic reachability checking, if we want more expressivity we better integrate this with Coccinelle *)
 
+(* THINK: Should this be a functor ? *)
+
 (* TODO:
  * - Rethink how we bound depth and width.
  * - Apart from limiting how many times we take goto-ish edges,
@@ -333,63 +335,64 @@ and pp_path = function
 	| [] -> PP.(!^ "trivial")
 	| pe -> PP.newline_sep (List.map pp_entry pe)
 
-let push_dec cond b (l,xs,t) = (l,PEdec(cond,b)::xs,t)
+let push_dec cond b (st,l,xs,t) = (st,l,PEdec(cond,b)::xs,t)
 
-let push_ctx step (l,xs,t) = (l,PEstep(step,SKctx)::xs,t)
+let push_ctx step (st,l,xs,t) = (st,l,PEstep(step,SKctx)::xs,t)
 
-let record_step trace step =
+let record_step ~trace st step =
 	match step.kind with
 	(* Do not record CIL-generated goto *)
 	| Goto(Cil.Label(_,_,false),_) -> false
 	| Goto(_,_)                    -> true
-	| _else                        -> trace step.effs
+	| _else                        -> trace st step.effs
 
-let match_at_loc s t = L.cons (s,[PEstep(s,SKmatch)],t) L.nil
+let tracing ~trace st step path =
+	if record_step ~trace st step
+	then L.map (push_ctx step) path
+	else path
+
+let match_at_loc st s t = L.cons (st,s,[PEstep(s,SKmatch)],t) L.nil
 
 let backtrack = L.nil
 
-type st_pred = step -> bool
+type 'st pred = 'st -> step -> 'st option
 
 (* TODO: We should return the statement or expression together with the location *)
 
-let rec reachable ks t ~guard ~target ~trace :(step * path * t delayed) L.t =
+let rec reachable ks t ~guard ~target ~trace st :('st * step * path * t delayed) L.t =
 	let open L in
 	match t() with
 	| Assume(cond,b,t') ->
-		map (push_dec cond b) (reachable ks t' guard target trace)
+		map (push_dec cond b) (reachable ks t' guard target trace st)
 	| Seq(step,t') ->
-		let ms = record_if_matches ~target step t' in
+		let ms = record_if_matches ~target step t' st in
 		if L.is_empty ms || ks
-		then ms ^@^ keep_searching ks ~guard ~target ~trace step t'
+		then ms ^@^ keep_searching ks ~guard ~target ~trace st step t'
 		else ms
 	| If(t1,t2) ->
-		let br1 = reachable ks t1 guard target trace in
-		let br2 = reachable ks t2 guard target trace in
+		let br1 = reachable ks t1 guard target trace st in
+		let br2 = reachable ks t2 guard target trace st in
 		br1 ^@^ br2
 	(* TODO: Allow to specify how many levels of Loop to investigate *)
 	| __otherwise__ ->
 		backtrack
 
-and record_if_matches ~target step t' =
-	if target step
-	then begin
+and record_if_matches ~target step t' st =
+	match target st step with
+	| Some st' ->
 		Log.debug "TARGET reached at %s: %s" (Utils.Location.to_string step.sloc) (string_of_step step);
-		match_at_loc step t'
-	end
-	else L.nil
+		match_at_loc st' step t'
+	| None -> L.nil
 
-and keep_searching ks ~guard ~target ~trace step t' =
-	if guard step
-	then begin
+and keep_searching ks ~guard ~target ~trace st step t' =
+	match guard st step with
+	| Some st' ->
 		(* Log.debug "reachable guard at %s" (Utils.Location.to_string step.sloc); *)
-		if record_step trace step
-		then L.map (push_ctx step) (reachable ks t' guard target trace)
-		else reachable ks t' guard target trace
-	end
-	else begin
+		tracing ~trace st step
+			(reachable ks t' guard target trace st')
+	| None ->
 		Log.debug "UNSAT guard at %s: %s" (Utils.Location.to_string step.sloc) (string_of_step step);
 		L.nil
-	end
 
 (* *************** Inlining *************** *)
 
@@ -409,7 +412,7 @@ let inline callerAbs step =
 		None
 
 let inline_check_loop ~bound ~filter ~guard ~target ~trace =
-	let rec loop stack b caller step =
+	let rec loop stack b caller st step =
 		if b = 0
 		then begin
 			Log.info "INLINE_CHECK exhausted :-/";
@@ -419,7 +422,7 @@ let inline_check_loop ~bound ~filter ~guard ~target ~trace =
 		| None             -> None
 		| Some (fnAbs, pt) ->
 			let fd = AFun.fundec fnAbs in
-			let ps = reachable false pt ~guard ~target ~trace
+			let ps = reachable false pt ~guard ~target ~trace st
 			       |> filter
 			in
 			go stack b fnAbs step fd ps
@@ -427,22 +430,22 @@ let inline_check_loop ~bound ~filter ~guard ~target ~trace =
 	| None ->
 		Log.debug "INLINE_CHECK could not reach target";
 		None
-	| Some ((step',path',_),_) ->
+	| Some ((st',step',path',_),_) ->
 		let stack' = (fd,step,path')::stack in
 		(* TODO: Pick the shortest match rather than the first one. *)
-		if guard step'
+		if Option.is_some (guard st' step') (* IS step->step' fixing a bug? *)
 		then begin
 			Log.info "INLINE_CHECK succeeded :-)";
 			Some (step',stack')
 		end
-		else loop stack' (b-1) func step'
+		else loop stack' (b-1) func st' step'
 	in
 	loop [] bound
 
-let inline_check ~bound ~filter ~guard ~target ~trace ~caller step =
+let inline_check ~bound ~filter ~guard ~target ~trace ~caller st step =
 	let path_of_stack stack = List.fold_left (fun p2 (fd1,stp1,p1) ->
 			[PEcall(fd1,stp1,p1@p2)]
 		) [] stack
 	in
-	inline_check_loop ~bound ~filter ~guard ~target ~trace caller step
+	inline_check_loop ~bound ~filter ~guard ~target ~trace caller st step
 		|> Option.map (Tuple2.map2 path_of_stack)

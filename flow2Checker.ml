@@ -21,24 +21,21 @@ module type Spec = sig
 	(** A name to identify the checker *)
 	val name : string
 
-	(** Checker's internal context, eg. a region to track.
-	 *
-	 * TODO: Turn it into the checker's state.
-	 *)
+	(** Checker's internal state, eg. memory regions to track. *)
 	type st
 	(** Selects initial contexts *)
 	val select : AFile.t -> Cil.fundec -> shape scheme -> AFun.t -> st L.t
 	(** Flags steps of interest for triaging. *)
 	val trace : st -> Effects.t -> bool
 	(** Tests *)
-	val testP1 : st -> step -> bool
-	val testQ1 : st -> step -> bool
-	val testP2 : st -> step -> bool
+	val testP1 : st -> step -> st option
+	val testQ1 : st -> step -> st option
+	val testP2 : st -> step -> st option
 	(** Q2 = P2 /\ Q2-weak *)
-	val testQ2_weak : st -> step -> bool
+	val testQ2_weak : st -> step -> st option
 
 	(** Bug data *)
-	type bug = st
+	type bug
 	val bug_of_st : st -> bug
 	val doc_of_report : fn:Cil.varinfo -> bug -> loc1:Cil.location -> loc2:Cil.location -> trace:path -> PP.doc
 end
@@ -61,9 +58,9 @@ module Make (A :Spec) : S = struct
 		A.doc_of_report fn bug loc1 loc2 trace
 	)
 
-	let same_loc (s1,_,_) (s2,_,_) = Cil.compareLoc s1.sloc s2.sloc = 0
+	let same_loc (_,s1,_,_) (_,s2,_,_) = Cil.compareLoc s1.sloc s2.sloc = 0
 
-	let cmp_match (s1,p1,_) (s2,p2,_) :int =
+	let cmp_match (_,s1,p1,_) (_,s2,p2,_) :int =
 		let l1 = s1.sloc in
 		let l2 = s2.sloc in
 		let lc = compare l1 l2 in
@@ -101,18 +98,23 @@ module Make (A :Spec) : S = struct
 	 * g_2. The solution is to use a weaker Q2, but inline calls to g_i and find
 	 * out whether the double lock acquisition is possible.
 	 *)
-	let filter_fp_notP2 fnAbs st = L.filter_map (fun ((s2,p2,pt2) as t2) ->
-		if Opts.inline_limit() >= 0 && not (A.testP2 st s2)
+	let filter_fp_notP2 fnAbs = L.filter_map (fun ((st,s2,p2,pt2) as t2) ->
+		if Opts.inline_limit() >= 0 && Option.is_none (A.testP2 st s2)
 		then begin
 			Log.debug "filter_fp_notfP: inlining ...";
 			let confirmed = inline_check ~bound:(Opts.inline_limit()) ~filter:nodup
-				~guard:(A.testP2 st) ~target:(A.testQ2_weak st)
-				~trace:(A.trace st)
+				~guard:A.testP2 ~target:A.testQ2_weak
+				~trace:A.trace
 				~caller:fnAbs
+				st
 				s2
 			in
 			Option.bind confirmed (fun (s2',p2') ->
-				Some (s2',p2@p2',pt2)
+				(* THINK: We do NOT update the state after `inline_check',
+				 * because the state should be local to the function where the
+				 * bug is reported. But we DO update the program `step' to blame.
+				 *)
+				Some (st,s2',p2@p2',pt2)
 			)
 		end
 		else (Log.debug "filter_fp_notfP: NOT inlining :-("; Some t2)
@@ -132,9 +134,10 @@ module Make (A :Spec) : S = struct
 		 *)
 		Log.info ">>> Searching for first target ...";
 		let ps1 = reachable true pt
-			~guard:(A.testP1 st)
-			~target:(A.testQ1 st)
-			~trace:(A.trace st)
+			~guard:A.testP1
+			~target:A.testQ1
+			~trace:A.trace
+			st
 		in
 		(* ... => X(p2 EU q2)
 		 * - Once a complete match Q1-->Q2 is found it usually makes little
@@ -142,18 +145,19 @@ module Make (A :Spec) : S = struct
 		 * - If we reach the same location in different ways, we just keep the
 		 *   we just keep the shortest (first) one wrt [cmp_match].
 		 *)
-		let rss = nodup ps1 |> L.map (fun (s1,p1,pt') ->
+		let rss = nodup ps1 |> L.map (fun (st1,s1,p1,pt') ->
 			Log.info ">>> Searching for second target starting with %s ..." (string_of_step s1);
 			let ps2 = reachable false pt'
-				~guard:(A.testP2 st)
-				~target:(A.testQ2_weak st)
-				~trace:(A.trace st)
+				~guard:A.testP2
+				~target:A.testQ2_weak
+				~trace:A.trace
+				st1
 			in
 			(* THINK: ps2_nodup just in strict mode? *)
-			let ps3 = ps2 |> nodup |> filter_fp_notP2 fnAbs st in
-			ps3 |> L.map (fun (s2,p2,_) ->
+			let ps3 = ps2 |> nodup |> filter_fp_notP2 fnAbs in
+			ps3 |> L.map (fun (st2,s2,p2,_) ->
 				{ fn   = Cil.(fd.svar)
-				; bug  = A.bug_of_st st
+				; bug  = A.bug_of_st st2
 				; loc1 = s1.sloc
 				; loc2 = s2.sloc
 				; trace= p1@p2

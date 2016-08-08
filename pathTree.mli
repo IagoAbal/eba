@@ -58,7 +58,7 @@ type t = Nil
  *)
 val paths_of : AFun.t -> t delayed
 
-type st_pred = step -> bool
+type 'st pred = 'st -> step -> 'st option
 
 type path = path_entry list
 
@@ -87,10 +87,10 @@ val pp_path : path -> PP.doc
 val reachable :
 	bool -> (* keep searching *)
 	t delayed ->
-	guard:st_pred ->
-	target:st_pred ->
-	trace:(Effects.t -> bool) ->
-	(step * path * t delayed) LazyList.t
+	guard:('st pred) ->
+	target:('st pred) ->
+	trace:('st -> Effects.t -> bool) ->
+	'st -> ('st * step * path * t delayed) LazyList.t
 
 (**
  * Given a program step satistying the target (Q) but not the guard (P),
@@ -101,10 +101,10 @@ val reachable :
  *)
 val inline_check :
 	bound:int ->
-	filter:((step * path * t delayed) LazyList.t -> (step * path * t delayed) LazyList.t) ->
-	guard:st_pred -> target:st_pred ->
-	trace:(Effects.t -> bool) ->
+	filter:(('st * step * path * t delayed) LazyList.t -> ('st * step * path * t delayed) LazyList.t) ->
+	guard:('st pred) -> target:('st pred) ->
+	trace:('st -> Effects.t -> bool) ->
 	caller:AFun.t ->
-	step ->
+	'st -> step ->
 	(step * path) option
 

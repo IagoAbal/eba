@@ -8,18 +8,18 @@ open PathTree
 module L = LazyList
 
 module type Spec = sig
-	(* TODO: We may generalize the objects being tracked (here a region)
-	 * For instance, some of these checkers could track a set of regions
-	 * at a time, reducing traversals and improving locality.
-	 *)
-	type bug = Region.t
 	val name : string
-	val doc_of_bug : region -> PP.doc
-	val select : AFile.t -> Cil.fundec -> shape scheme -> AFun.t -> bug L.t
-	val trace : bug -> Effects.t -> bool
-	(* TODO: We may allow to accumulate state *)
-	val testP : bug -> step -> bool
-	val testQ : bug -> step -> bool
+
+	(** Checker's internal state, eg. memory regions to track. *)
+	type st
+	val select : AFile.t -> Cil.fundec -> shape scheme -> AFun.t -> st L.t
+	val trace : st -> Effects.t -> bool
+	val testP : st -> step -> st option
+	val testQ : st -> step -> st option
+
+	type bug = Region.t
+	val bug_of_st : st -> bug
+	val doc_of_bug : bug -> PP.doc
 end
 
 module type S = sig
@@ -46,13 +46,14 @@ module Make (A :Spec) : S = struct
 
 	let search fd pt r : report L.t =
 		let lps = reachable false pt
-			~guard:(A.testP r)
-			~target:(A.testQ r)
-			~trace:(A.trace r)
+			~guard:A.testP
+			~target:A.testQ
+			~trace:A.trace
+			r
 		in
-		let mk_report (s,p,_) = {
+		let mk_report (st',s,p,_) = {
 			fn = Cil.(fd.svar);
-			reg = r;
+			reg = A.bug_of_st st';
 			loc = s.sloc;
 			trace = p;
 		} in

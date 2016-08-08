@@ -5,13 +5,18 @@ open Type
 open Abs
 open PathTree
 
+open Utils.Option
+
 module L = LazyList
 
 module Spec = struct
 
+	type st = Region.t
 	type bug = Region.t
 
 	let name = "Flow-1 use-before-initialization local-variable checker"
+
+	let bug_of_st r = r
 
 	let doc_of_bug r =
 		PP.(!^ "Use before initialization" ++ parens(Region.pp r))
@@ -34,9 +39,9 @@ module Spec = struct
 
 	let reads_and_not_writes r ef = reads r ef && not_writes r ef
 
-	let testP r step = not_writes r step.effs
+	let testP r step = not_writes r step.effs =>? r
 
-	let testQ r step = reads_and_not_writes r step.effs
+	let testQ r step = reads_and_not_writes r step.effs =>? r
 end
 
 module Checker = Flow1Checker.Make(Spec)

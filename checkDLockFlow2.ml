@@ -5,6 +5,8 @@ open Type
 open Abs
 open PathTree
 
+open Utils.Option
+
 module L = LazyList
 
 module Spec = struct
@@ -29,13 +31,13 @@ module Spec = struct
 
 	let locks_and_not_unlocks r ef = locks r ef && not_unlocks r ef
 
-	let testP1 _ _ = true
+	let testP1 r _ = Some r
 
-	let testQ1 r step = locks_and_not_unlocks r step.effs
+	let testQ1 r step = locks_and_not_unlocks r step.effs =>? r
 
-	let testP2 r step = not_unlocks r step.effs
+	let testP2 r step = not_unlocks r step.effs =>? r
 
-	let testQ2_weak r step = may_lock r step.effs
+	let testQ2_weak r step = may_lock r step.effs =>? r
 
 	type bug = Region.t
 
