@@ -8,6 +8,102 @@ open Cil
  * `Cil.computeCFGInfo', which simplifies the CFG removing `switch'.
  *)
 
+let compareType ty1 ty2 = Pervasives.compare (typeSig ty1) (typeSig ty2)
+
+let compareTypeAnd ty1 ty2 delayed_cmp =
+	let ty_cmp = compareType ty1 ty2 in
+	if ty_cmp <> 0
+	then ty_cmp
+	else delayed_cmp()
+
+(* A (hopefully) sensible way of comparing CIL expressions. *)
+let rec compareExp exp1 exp2 =
+	match exp1, exp2 with
+	| Const c1, Const c2         -> Pervasives.compare c1 c2
+	| Lval lv1, Lval lv2
+	| AddrOf lv1, AddrOf lv2
+	| StartOf lv1, StartOf lv2   -> compareLval lv1 lv2
+	| SizeOf ty1, SizeOf ty2
+	| AlignOf ty1, AlignOf ty2   -> compareType ty1 ty2
+	| SizeOfE e1, SizeOfE e2
+	| AlignOfE e1, AlignOfE e2   -> compareExp e1 e2
+	| SizeOfStr s1, SizeOfStr s2 -> String.compare s1 s2
+	| UnOp(o1,e1,ty1), UnOp(o2,e2,ty2) ->
+		let o_cmp = Pervasives.compare o1 o2 in
+		if o_cmp <> 0
+		then o_cmp
+		else compareTypeAnd ty1 ty2 (fun () -> compareExp e1 e2)
+	| BinOp(o1,a1,b1,ty1), BinOp(o2,a2,b2,ty2) ->
+		let o_cmp = Pervasives.compare o1 o2 in
+		if o_cmp <> 0
+		then o_cmp
+		else compareTypeAnd ty1 ty2 (fun () -> compareExp2 a1 a2 b1 b2)
+	| Question(a1,b1,c1,ty1), Question(a2,b2,c2,ty2) ->
+		compareTypeAnd ty1 ty2 (fun () -> compareExp3 a1 a2 b1 b2 c1 c2)
+	| CastE(ty1,e1), CastE(ty2,e2) ->
+		compareTypeAnd ty1 ty2 (fun () -> compareExp e1 e2)
+	| AddrOfLabel stmt_ref1, AddrOfLabel stmt_ref2 ->
+		Int.compare !stmt_ref1.sid !stmt_ref2.sid
+	(* NB: Should be different constructors, so we let the default `compare'
+	 * determine the order betwen them.
+	 *)
+	| e1, e2 -> Pervasives.compare e1 e2
+
+and compareExp2 a1 a2 b1 b2 =
+	let a_cmp = compareExp a1 a2 in
+	if a_cmp <> 0
+	then a_cmp
+	else compareExp b1 b2
+
+and compareExp3 a1 a2 b1 b2 c1 c2 =
+	let a_cmp = compareExp a1 a2 in
+	if a_cmp <> 0
+	then a_cmp
+	else compareExp2 b1 b2 c1 c2
+
+(* A (hopefully) sensible way of comparing CIL lvalues. *)
+and compareLval (lhost1,offset1) (lhost2,offset2) =
+	let lhost_cmp = compareLhost lhost1 lhost2 in
+	if lhost_cmp <> 0
+	then lhost_cmp
+	else compareOffset offset1 offset2
+
+and compareLhost lhost1 lhost2 =
+	match lhost1, lhost2 with
+	(* NB: We use a relaxed criterion that compares variable names rather than
+	 * `vid's, so that two local variables from two different functions can be
+	 * considered equal, if their names are equal.
+	 *
+	 * Eg. If `f' locks on `obj->lock' and calls `g' which also locks on `obj->lock',
+	 * then the two expressions are consired equal, even though each one of two `obj'
+	 * variables is different.
+	 *)
+	| Var x , Var y  -> String.compare x.vname y.vname
+	| Mem e1, Mem e2 -> compareExp e1 e2
+	| Var _ , Mem _  -> -1
+	| Mem _ , Var _  -> 1
+
+and compareOffset offset1 offset2 =
+	match offset1, offset2 with
+	| NoOffset, NoOffset -> 0
+	| NoOffset, _ -> -1
+	| Field(fi1,of1), Field(fi2,of2) ->
+		let s_cmp = Int.compare fi1.fcomp.ckey fi2.fcomp.ckey in
+		if s_cmp <> 0
+		then s_cmp
+		else let fi_cmp = String.compare fi1.fname fi2.fname in
+		if fi_cmp <> 0
+		then fi_cmp
+		else compareOffset of1 of2
+	| Field _, NoOffset -> 1
+	| Field _, Index _  -> -1
+	| Index(e1,of1), Index(e2,of2) ->
+		let e_cmp = compareExp e1 e2 in
+		if e_cmp <> 0
+		then e_cmp
+		else compareOffset of1 of2
+	| Index _, NoOffset -> 1
+	| Index _, Field _  -> 1
 
 (** Has `node' a CIL-generated label starting with `prefix' ? *)
 let is_labeled_with prefix node :bool =
