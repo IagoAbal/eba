@@ -14,9 +14,16 @@ type checks = {
 
 let run_checks checks file fileAbs :unit =
 	let run_check_fun fd in_func =
-		 in_func fileAbs fd |> L.iter (function errmsg ->
-			Printf.printf "\nPotential BUG found:\n%s\n\n" errmsg
-		 )
+		let with_warn_out print =
+			if Opts.Get.warn_output()
+			then File.with_file_out (Cil.(file.fileName) ^ ".warn") print
+			else print IO.stdout
+		in
+		in_func fileAbs fd |> L.iter (fun errmsg ->
+		 	with_warn_out (fun out ->
+				Printf.fprintf out "\nPotential BUG found:\n%s\n\n" errmsg
+			)
+		)
 	in
 	let fds = Cil.(file.globals) |> List.filter_map (function
 		| Cil.GFun(fd,_) -> Some fd
@@ -60,7 +67,7 @@ let log_level_of_int = function
 	| x -> Log.DEBUG (* x >= 3 *)
 
 let infer_files verbosity
-		flag_gcstats flag_saveabs
+		flag_gcstats flag_saveabs flag_warn_output
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
 		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
 		flag_no_match_lock_exp
@@ -72,6 +79,7 @@ let infer_files verbosity
 	Log.set_log_level (log_level_of_int verbosity);
 	Opts.Set.gc_stats flag_gcstats;
 	Opts.Set.save_abs flag_saveabs;
+	Opts.Set.warn_output flag_warn_output;
 	Opts.Set.dce (not flag_no_dce);
 	Opts.Set.dfe (not flag_no_dfe);
 	Opts.Set.unsafe_casts (not flag_safe_casts);
@@ -100,6 +108,10 @@ let flag_gcstats =
 let flag_saveabs =
 	let doc = "Save effect abstraction to an .abs file." in
 	Arg.(value & flag & info ["save-abs"] ~doc)
+
+let flag_warn_output =
+	let doc = "Save warns into a .warn file." in
+	Arg.(value & flag & info ["warn-output"] ~doc)
 
 (* Type inferrer*)
 
@@ -162,7 +174,7 @@ let cmd =
 	let man = [ `S "DESCRIPTION"; `P "Author: Iago Abal <mail@iagoabal.eu>."; ] in
 	Term.(pure infer_files
 		$ verbose
-		$ flag_gcstats $ flag_saveabs
+		$ flag_gcstats $ flag_saveabs $ flag_warn_output
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
 		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
 		$ flag_no_match_lock_exp

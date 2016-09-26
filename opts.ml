@@ -3,6 +3,7 @@ type copts = {
 	(* General *)
 	mutable gc_stats : bool;
 	mutable save_abs : bool;
+	mutable warn_output : bool;
 	(* Type inferrer *)
 	mutable dce : bool;
 	mutable dfe : bool;
@@ -20,6 +21,7 @@ type copts = {
 let opts : copts = {
 	gc_stats = false;
 	save_abs = false;
+	warn_output = false;
 
 	dce = true;
 	dfe = true;
@@ -40,6 +42,8 @@ struct
 	let gc_stats v = opts.gc_stats <- v
 
 	let save_abs v = opts.save_abs <- v
+
+	let warn_output v = opts.warn_output <- v
 
 	let dce v = opts.dce <- v
 
@@ -67,6 +71,8 @@ struct
 	let gc_stats () = opts.gc_stats
 
 	let save_abs () = opts.save_abs
+
+	let warn_output () = opts.warn_output
 
 	let dce () = opts.dce
 
