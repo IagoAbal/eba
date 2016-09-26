@@ -44,6 +44,6 @@ clean:
      libeba.cma libeba.cmxa libeba.a eba.cma eba.cmxa eba.a
 
 .PHONY: test
-test:
+test: eba.opt
   export TESTDIR=`pwd`/test
   cram test/linux.t
