@@ -15,6 +15,7 @@ type copts = {
 	mutable branch_limit : int;
 	mutable path_check : bool;
 	(* Double-Lock bug checker *)
+	mutable all_lock_types : bool;
 	mutable match_lock_exp : bool;
 }
 
@@ -33,6 +34,7 @@ let opts : copts = {
 	branch_limit = 15;
 	path_check = true;
 
+	all_lock_types = false;
 	match_lock_exp = true;
 }
 
@@ -60,6 +62,8 @@ struct
 	let branch_limit v = opts.branch_limit <- v
 
 	let path_check v = opts.path_check <- v
+
+	let all_lock_types v = opts.all_lock_types <- v
 
 	let match_lock_exp v = opts.match_lock_exp <- v
 
@@ -89,6 +93,8 @@ struct
 	let branch_limit () = opts.branch_limit
 
 	let path_check () = opts.path_check
+
+	let all_lock_types () = opts.all_lock_types
 
 	let match_lock_exp () = opts.match_lock_exp
 

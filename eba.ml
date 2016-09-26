@@ -70,7 +70,7 @@ let infer_files verbosity
 		flag_gcstats flag_saveabs flag_warn_output
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
 		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
-		flag_no_match_lock_exp
+		flag_all_lock_types flag_no_match_lock_exp
 		chk_uninit chk_dlock chk_birq
 		files =
 	(* CIL: do not print #line directives. *)
@@ -88,6 +88,7 @@ let infer_files verbosity
 	Opts.Set.loop_limit opt_loop_limit;
 	Opts.Set.branch_limit opt_branch_limit;
 	Opts.Set.path_check (not flag_no_path_check);
+	Opts.Set.all_lock_types flag_all_lock_types;
 	Opts.Set.match_lock_exp (not flag_no_match_lock_exp);
 	let checks = { chk_uninit; chk_dlock; chk_birq } in
 	List.iter (infer_file checks) files
@@ -151,6 +152,10 @@ let flag_no_path_check =
 
 (* Double-Lock bug cheker *)
 
+let flag_all_lock_types =
+	let doc = "[Double-Lock] Check all lock types (not only spin locks)." in
+	Arg.(value & flag & info ["all-lock-types"] ~doc)
+
 let flag_no_match_lock_exp =
 	let doc = "[Double-Lock] Do not use heuristics to match lock object expressions." in
 	Arg.(value & flag & info ["no-match-lock-exp"] ~doc)
@@ -177,7 +182,7 @@ let cmd =
 		$ flag_gcstats $ flag_saveabs $ flag_warn_output
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
 		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
-		$ flag_no_match_lock_exp
+		$ flag_all_lock_types $ flag_no_match_lock_exp
 		$ check_uninit $ check_dlock $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1.0" ~doc ~man

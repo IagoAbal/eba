@@ -370,19 +370,12 @@ end = struct
 
 	let axiom_map : (name,mk_effects) Hashtbl.t  =
 		let tbl = Hashtbl.create 23 in
-		add_axiom tbl ax_mutex_lock;
-		add_axiom tbl ax_mutex_lock_nested;
-		add_axiom tbl ax_mutex_lock_interruptible_nested;
-		add_axiom tbl ax_mutex_unlock;
 		add_axiom tbl ax_spin_lock;
 		add_axiom tbl ax_raw_spin_lock;
 		add_axiom tbl ax_spin_unlock;
 		add_axiom tbl ax_raw_spin_unlock;
 		add_axiom tbl ax__raw_spin_unlock;
 		add_axiom tbl ax__raw_spin_trylock;
-		add_axiom tbl ax_raw_read_lock;
-		add_axiom tbl ax_raw_read_unlock;
-		add_axiom tbl ax__raw_read_unlock;
 		add_axiom tbl ax_raw_spin_lock_irq;
 		add_axiom tbl ax_raw_spin_unlock_irq;
 		add_axiom tbl ax__raw_spin_unlock_irq;
@@ -390,6 +383,16 @@ end = struct
 		add_axiom tbl ax_raw_spin_unlock_irqrestore;
 		add_axiom tbl ax_spin_lock_bh;
 		add_axiom tbl ax_spin_unlock_bh;
+		if Opts.all_lock_types()
+		then begin
+			add_axiom tbl ax_mutex_lock;
+			add_axiom tbl ax_mutex_lock_nested;
+			add_axiom tbl ax_mutex_lock_interruptible_nested;
+			add_axiom tbl ax_mutex_unlock;
+			add_axiom tbl ax_raw_read_lock;
+			add_axiom tbl ax_raw_read_unlock;
+			add_axiom tbl ax__raw_read_unlock;
+		end;
 		tbl
 
 	let find x xz =

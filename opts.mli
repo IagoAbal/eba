@@ -23,6 +23,8 @@ module Set : sig
 
 	val path_check : bool -> unit
 
+	val all_lock_types : bool -> unit
+
 	val match_lock_exp : bool -> unit
 
 end
@@ -50,6 +52,8 @@ module Get : sig
 	val branch_limit : unit -> int
 
 	val path_check : unit -> bool
+
+	val all_lock_types : unit -> bool
 
 	val match_lock_exp : unit -> bool
 
