@@ -284,7 +284,7 @@ let of_instr_log fnAbs env instr =
 		   (Effects.to_string f)
 		   (Utils.string_of_cil Cil.d_instr instr);
 	assert(Regions.for_all Region.is_meta (Effects.regions f));
-	AFun.add_loc fnAbs loc f;
+	AFun.add_instr_eff fnAbs loc f;
 	f, k
 
 let sum_f_k : (Effects.t * K.t) list -> Effects.t * K.t
@@ -337,11 +337,11 @@ let rec of_stmtkind (fnAbs :AFun.t) (env :Env.t) (rz :shape)
 	| Cil.Return (e_opt,loc)
 	-> begin match e_opt with
 	   | None   ->
-		   AFun.add_loc fnAbs loc E.none;
+		   AFun.add_expr_eff fnAbs loc E.none;
 		   Effects.none, K.none
 	   | Some e
 	   -> let z, f, k = of_exp env e in
-		  AFun.add_loc fnAbs loc f;
+		  AFun.add_expr_eff fnAbs loc f;
 	      Unify.(z =~ rz);
 	      f, k
 	   end
@@ -349,7 +349,7 @@ let rec of_stmtkind (fnAbs :AFun.t) (env :Env.t) (rz :shape)
 	| Cil.Goto(_,loc)
 	| Cil.Break loc
 	| Cil.Continue loc ->
-		AFun.add_loc fnAbs loc E.none;
+		AFun.add_instr_eff fnAbs loc E.none;
 		Effects.none, K.none
 	(* TODO: still unsupported GCC extension *)
 	| Cil.ComputedGoto _
@@ -358,7 +358,7 @@ let rec of_stmtkind (fnAbs :AFun.t) (env :Env.t) (rz :shape)
 	-> let _z0, f0, k0 = of_exp env e in
 	   let      f1, k1 = of_block fnAbs env rz b1 in
 	   let      f2, k2 = of_block fnAbs env rz b2 in
-	   AFun.add_loc fnAbs loc f0;
+	   AFun.add_expr_eff fnAbs loc f0;
 	   Effects.(f0 + f1 + f2), K.(k0 + k1 + k2)
 	| Cil.Switch _
 	-> Error.not_implemented("of_stmtkind: switch")
@@ -412,7 +412,7 @@ let of_fundec_locals env fnAbs (locals :Cil.varinfo list) :E.t * Env.t =
 		(* THINK: The implicit effects of local declarations may
 		   better be cached in a different way than regular
 		   statement effects. *)
-		AFun.add_loc fnAbs Cil.(x.vdecl) xf;
+		AFun.add_expr_eff fnAbs Cil.(x.vdecl) xf;
 		E.(xf + ef)
 	) E.none locals_bs
 	in

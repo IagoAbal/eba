@@ -151,7 +151,7 @@ let group_by_loc fnAbs lenv instrs :step list * E.t * Lenv.t =
 	let iss = List.group_consecutive Utils.instr_same_loc instrs in
 	let steps = iss |> List.map (fun is ->
 		let loc = Cil.get_instrLoc (List.hd is) in
-		let ef = AFun.effect_of fnAbs loc in
+		let ef = AFun.effect_of_instr fnAbs loc in
 		{ kind = Stmt is; effs = ef; sloc = loc; }
 	) in
 	let effects, lenv' = List.fold_left (fun (acc,le) step ->
@@ -214,7 +214,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 			else fun () -> Seq(s,nxt)
 		) iss next) ()
 	| Cil.Return(e_opt,loc) ->
-		let ef = AFun.effect_of fnAbs loc in
+		let ef = AFun.effect_of_expr fnAbs loc in
 		let ret = {
 			kind = Ret e_opt;
 			effs = ef;
@@ -224,7 +224,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 	| Cil.If (e,_,_,loc) ->
 		let tkind = tk_of_option (CE.is_while_test node) in
 		let cond = Cond(tkind,e,loc) in
-		let ef = AFun.effect_of fnAbs loc in
+		let ef = AFun.effect_of_expr fnAbs loc in
 		let take_branch dec node' =
 			match take_edge visited node node' with
 			| None ->

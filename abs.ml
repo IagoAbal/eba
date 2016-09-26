@@ -201,7 +201,9 @@ and AFun : sig
 	(** Look up a variable name in the function (or else, in the file) environment. *)
 	val find_var : t -> Cil.varinfo -> shape option
 
-	val add_loc : t -> Cil.location -> Effects.t -> unit
+	val add_instr_eff : t -> Cil.location -> Effects.t -> unit
+
+	val add_expr_eff : t -> Cil.location -> Effects.t -> unit
 
 	val add_call : t -> Cil.location -> TypeArgs.t -> unit
 
@@ -222,7 +224,9 @@ and AFun : sig
 
 	val regions_of_list : t -> Cil.varinfo list -> Regions.t
 
-	val effect_of : t -> Cil.location -> Effects.t
+	val effect_of_instr : t -> Cil.location -> Effects.t
+
+	val effect_of_expr : t -> Cil.location -> Effects.t
 
 	val uninit_locals : t -> Cil.fundec -> Regions.t
 
@@ -244,6 +248,38 @@ end = struct
 	module VarMap = Hashtbl.Make(Utils.Varinfo)
 	module LocMap = Hashtbl.Make(Utils.Location)
 
+	(** NOTE [Location-to-Effect mapping]
+	 *
+	 * In CIL expressions are side-effect free, thus something like this:
+	 *
+	 *     if (f(x)) ...
+	 *
+	 * is converted into:
+	 *
+	 *     tmp = f(x);
+	 *     if (tmp) ...
+	 *
+	 * The problem for us is that both the function call and the if test have the
+	 * same source location assigned. If we simply map locations to effects, we
+	 * will record that `tmp' has the side-effects of calling `f', and that may
+	 * cause some weird results (e.g. a double lock bug report).
+	 *
+	 * The solution is simple, we just maintain two separate mappings, one for
+	 * instructions, and another for expressions. Expressions are a bit boring,
+	 * and should only have read effects.
+	 *
+	 * TODO: This is actually part of a more general problem of the CIL front-end:
+	 *
+	 *           for (e1; e2; e3) ...
+	 *
+	 *       In a for-loop construct all the subexpressions receive the same source
+	 *       location, so the effects of all of them get confused.
+	 *
+	 *       The best solution for this problem that I can think of, requires that
+	 *       we generate a new effect-annotated AST, rather than just keeping a
+	 *       separate map assigning effects to locations.
+	 *)
+
 	(* THINK: Local variables have monomorphic shape schemes... so we could simplify this as vars : shape VarMap.t *)
 	type t = {
 		 (* Associated file. *)
@@ -253,7 +289,9 @@ end = struct
 		 (* Formal parameters and local variables. *)
 		vars : shape scheme VarMap.t;
 		 (* Effects of a CIL instruction. *)
-		effs : E.t LocMap.t;
+		ieffs : E.t LocMap.t;
+		 (* Effects of a CIL expression. *)
+		eeffs : E.t LocMap.t;
 		 (* Type arguments of a function call. *)
 		call : TypeArgs.t LocMap.t;
 	}
@@ -265,7 +303,8 @@ end = struct
 		{ file = fileAbs
 		; fdec = fd
 		; vars = VarMap.create 3
-		; effs = LocMap.create 19
+		; ieffs = LocMap.create 19
+		; eeffs = LocMap.create 19
 		; call = LocMap.create 19
 		}
 
@@ -290,18 +329,24 @@ end = struct
 	let find_var fna x =
 		Utils.Option.(find_local_var fna <|> AFile.find_var fna.file) x
 
-	let add_loc tbl loc eff =
+	let add_instr_eff tbl loc eff =
 		(* Log.debug "Loc -> effects:\n %s -> %s\n"
 			   (Utils.Location.to_string loc)
 			   (Effects.to_string eff); *)
 		(* TODO: assert(Vars.is_empty (Effects.bv_of eff)); *)
-		LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.effs
+		LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.ieffs
+
+	let add_expr_eff tbl loc eff =
+		LocMap.modify_def eff loc (fun f -> E.(eff + f)) tbl.eeffs
 
 	let add_call tbl loc args =
 		LocMap.replace tbl.call loc args
 
 	let args_of_call tbl =
 		LocMap.Exceptionless.find tbl.call
+
+	let enum_effs tbl =
+		Enum.append (LocMap.enum tbl.ieffs) (LocMap.enum tbl.eeffs)
 
 	let fv_of_locals tbl =
 		VarMap.fold (fun _ sch fvs ->
@@ -317,7 +362,7 @@ end = struct
 	let fv_of tbl =
 		let fvs = Vars.(fv_of_locals tbl + fv_of_calls tbl) in
 		assert(
-			tbl.effs |> LocMap.enum |> Enum.for_all (fun (_, ef) ->
+			enum_effs tbl |> Enum.for_all (fun (_, ef) ->
 				Vars.subset (Effects.fv_of ef) fvs
 			)
 		);
@@ -326,7 +371,8 @@ end = struct
 	let map f g h tbl =
 		{ tbl with
 		  vars = VarMap.map f tbl.vars
-		; effs = LocMap.map g tbl.effs
+		; ieffs = LocMap.map g tbl.ieffs
+		; eeffs = LocMap.map g tbl.eeffs
 		; call = LocMap.map h tbl.call
 		}
 
@@ -338,7 +384,8 @@ end = struct
 
 	let map_inplace f g h tbl =
 		VarMap.map_inplace f tbl.vars;
-		LocMap.map_inplace g tbl.effs;
+		LocMap.map_inplace g tbl.ieffs;
+		LocMap.map_inplace g tbl.eeffs;
 		LocMap.map_inplace h tbl.call
 
 	let zonk = map_inplace
@@ -364,8 +411,14 @@ end = struct
 
 	let regions_of_list tbl = Regions.sum % List.map (regions_of tbl)
 
-	let effect_of tbl =
-		LocMap.find tbl.effs
+	let effect_of_instr tbl =
+		LocMap.find tbl.ieffs
+
+	let effect_of_expr tbl =
+		LocMap.find tbl.eeffs
+
+	let effect_of_any tbl loc =
+		E.(effect_of_instr tbl loc + effect_of_expr tbl loc)
 
 	let call fna ~fn loc =
 		let open Option.Infix in
@@ -373,12 +426,13 @@ end = struct
 		AFile.inst_fun fna.file fn targs
 
 	let sum tbl =
-		LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.effs E.none
+		let e_sum = LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.eeffs E.none in
+		LocMap.fold (fun _ ef acc -> E.(ef + acc)) tbl.ieffs e_sum
 
 	(* TODO: should be cached *)
 	let effect_of_local_decl tbl fd :E.t =
 		let open Cil in
-		List.fold_left E.(fun fs x -> effect_of tbl x.vdecl + fs)
+		List.fold_left E.(fun fs x -> effect_of_any tbl x.vdecl + fs)
 			E.none
 			fd.slocals
 
@@ -409,8 +463,7 @@ end = struct
 		let ef = Effects.to_string f in
 		Printf.fprintf out "%s -> %s\n" loc ef
 
-	let print_steps out tbl = tbl.effs
-			 |> LocMap.enum
+	let print_steps out tbl = enum_effs tbl
 			 |> List.of_enum
 			 |> List.sort Utils.compare_first
 			 |> List.iter (print_step out)
