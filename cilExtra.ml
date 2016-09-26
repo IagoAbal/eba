@@ -3,6 +3,13 @@ open Batteries
 
 open Cil
 
+(** Like Cil.stripCast but it also recurses into operations. *)
+let rec stripCastsOp = function
+| CastE(_, e)        -> stripCastsOp e
+| UnOp(op,e,ty)      -> UnOp(op,stripCastsOp e,ty)
+| BinOp(op,e1,e2,ty) -> BinOp(op,stripCastsOp e1,stripCastsOp e2,ty)
+| e                  -> e
+
 (* Function call arguments *)
 
 let args_of_call : instr -> exp list option = function
