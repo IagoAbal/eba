@@ -333,6 +333,11 @@ let rec from_stmt fnAbs lenv ef = function
 | __else_____________________ ->
 	kill_updated fnAbs lenv ef
 
+let from_stmt fna lenv ef is =
+	if Opts.path_check()
+	then from_stmt fna lenv ef is
+	else lenv
+
 let from_test fnAbs lenv v exp =
 	if Opts.path_check()
 	then from_exp fnAbs lenv v exp
