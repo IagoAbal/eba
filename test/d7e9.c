@@ -13,6 +13,7 @@ struct spinlock fake_lock;
 
 int inode_get_rsv_space(struct spinlock *i_lock)
 {
+  i_lock = (struct spinlock *)1;
   spin_lock(i_lock); // (4) ERROR
   // do something
   spin_unlock(i_lock);

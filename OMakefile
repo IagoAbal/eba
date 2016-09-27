@@ -46,4 +46,4 @@ clean:
 .PHONY: test
 test: eba.opt
   export TESTDIR=`pwd`/test
-  cram test/path.t test/linux.t
+  cram test/heuristics.t test/path.t test/linux.t

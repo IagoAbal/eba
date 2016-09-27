@@ -11,7 +11,7 @@
   first at fs/quota/dquot.c:903
   second at fs/quota/dquot.c:1523
 
-  $ eba -L linux/htt_rx.i 2>/dev/null | grep -A 2 "Double lock"
+  $ eba -L --externs-do-nothing linux/htt_rx.i 2>/dev/null | grep -A 2 "Double lock"
   Double lock (*) (glob)
   first at drivers/net/wireless/ath/ath10k/htt_rx.c:2458
   second at drivers/net/wireless/ath/ath10k/htt_rx.c:182

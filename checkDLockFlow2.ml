@@ -15,16 +15,18 @@ module Spec = struct
 	let name = "Flow-2 double-lock checker"
 
 	type st = {
+		fna  : AFun.t;
 		reg  : Region.t;
 		lock : Cil.exp option;
+		kreg : Regions.t;
 	}
 
-	let init_st r = { reg = r; lock = None; }
+	let init_st fna r = { fna; reg = r; lock = None; kreg = Regions.empty; }
 
-	let select fileAbs fd fsch fnAbs =
-		let feffects = AFun.sum fnAbs in
+	let select _fla fd fsch fna =
+		let feffects = AFun.sum fna in
 		let locked = E.(regions(filter is_locks feffects)) in
-		L.of_enum (Enum.map init_st (Regions.enum locked))
+		L.of_enum (Enum.map (init_st fna) (Regions.enum locked))
 
 	let trace st ef =
 		let ef_rs = E.(regions (filter (not % is_reads) ef)) in
@@ -33,6 +35,16 @@ module Spec = struct
 	let may_unlock r ef :bool =	E.(mem (unlocks r) ef)
 
 	let not_unlocks r ef :bool = not (may_unlock r ef)
+
+	let may_write r ef :bool = E.(mem (writes r) ef)
+
+	let not_writes r ef :bool = not (may_write r ef)
+
+	(* THINK: ignore_writes can be handled by Flow2Checker. *)
+	let not_writes_any rs ef :bool =
+		if Opts.ignore_writes()
+		then true
+		else Regions.for_all (fun r -> not_writes r ef) rs
 
 	let locks r ef :bool = E.(mem_must (locks r) ef)
 
@@ -47,10 +59,27 @@ module Spec = struct
 	let testQ1 st step =
 		locks_and_not_unlocks st.reg step.effs =>?
 			let lock1_opt = find_lock_object step in
-			{st with lock = lock1_opt}
+			let krs = Option.Infix.(
+				(lock1_opt >>= Lenv.kregions_of st.fna)
+				|? Regions.empty
+			) in
+			{st with lock = lock1_opt; kreg = krs}
 
-	let testP2 st step = not_unlocks st.reg step.effs =>? st
+	(* NOTE [Ignore writes]
+	 *
+	 * This is useful to conservatively ignore collections of locks, e.g. in
+	 *
+	 *     for (i=0; i<N; i++) spin_lock(lock_arr[i]);
+	 *
+	 * the `i' is written at each iteration, and that will prevent us from
+	 * reporting a double lock here.
+	 *)
+	let testP2 st step =
+(* 		if not (not_writes_any st.kreg step.effs)
+		then Log.error "Some monitored region (%s) is being written at %s: %s & %s" (Regions.to_string st.kreg) (Utils.Location.to_string step.sloc) (string_of_step step) Effects.(to_string (principal step.effs)); *)
+		(not_unlocks st.reg step.effs && not_writes_any st.kreg step.effs) =>? st
 
+	(* THINK: match_lock_exp can be handled by Flow2Checker. *)
 	let testQ2_weak st step =
 		if may_lock st.reg step.effs
 		then

@@ -17,6 +17,7 @@ type copts = {
 	(* Double-Lock bug checker *)
 	mutable all_lock_types : bool;
 	mutable match_lock_exp : bool;
+	mutable ignore_writes : bool;
 }
 
 let opts : copts = {
@@ -36,6 +37,7 @@ let opts : copts = {
 
 	all_lock_types = false;
 	match_lock_exp = true;
+	ignore_writes = false;
 }
 
 module Set =
@@ -67,6 +69,8 @@ struct
 
 	let match_lock_exp v = opts.match_lock_exp <- v
 
+	let ignore_writes v = opts.ignore_writes <- v
+
 end
 
 module Get =
@@ -97,5 +101,7 @@ struct
 	let all_lock_types () = opts.all_lock_types
 
 	let match_lock_exp () = opts.match_lock_exp
+
+	let ignore_writes () = opts.ignore_writes
 
 end
