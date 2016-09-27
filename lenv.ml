@@ -342,3 +342,89 @@ let from_test fnAbs lenv v exp =
 	if Opts.path_check()
 	then from_exp fnAbs lenv v exp
 	else lenv
+
+(********************************************)
+(* Propagating facts through function calls *)
+(********************************************)
+
+open Option.Infix
+
+let rec subst amap : exp -> exp option = function
+| Const c
+-> Some(Const c)
+| Lval lv
+-> Option.map (fun lv' -> Lval lv') (subst_lval amap lv)
+| AddrOf lv
+-> Option.map (fun lv' -> AddrOf lv') (subst_lval amap lv)
+| CastE(ty,e)
+-> Option.map (fun e' -> CastE(ty,e')) (subst amap e)
+| BinOp(op,e1,e2,ty)
+->
+	subst amap e1 >>= fun e1' ->
+	subst amap e2 >>= fun e2' ->
+		Some(BinOp(op,e1',e2',ty))
+| _else___
+-> None
+
+(** Given an l-value `a.b.c.d' it first tries to loop in `amap' all the possible
+ * prefixes by popping one offset at a time, from `a.b.c.d' to `a.b'.
+ *)
+and subst_lval_prefix amap : lval -> (lval * offset list) option =
+	let rec try_subst (acc : offset list) lv =
+		match List.Exceptionless.assoc (Lval lv) amap with
+		| Some y -> Some((Var y,NoOffset),acc)
+		| None   ->
+			match Cil.removeOffsetLval lv with
+			| (lhost,_), NoOffset
+			->
+				Option.map
+					(fun lhost' -> ((lhost',NoOffset),acc))
+					(subst_lhost amap lhost)
+			|       lv',     off1
+			-> try_subst (off1::acc) lv'
+	in try_subst []
+
+and subst_lval amap lval : lval option =
+	subst_lval_prefix amap lval >>= fun (lval1,rev_offsets) ->
+		(* If substitution succeeds on some prefix, it applies the substitution
+		 * to the popped offsets, and reconstructs the l-value.
+		 *)
+		Utils.Option.fold_left_break lval1 rev_offsets ~f:(fun lv os ->
+				Option.map
+					(fun os' -> Cil.addOffsetLval os' lv)
+					(subst_offset amap os)
+			)
+
+and subst_lhost amap : lhost -> lhost option = function
+| Var x when x.vglob -> Some (Var x)
+| Var x ->
+	let x_lv = Lval(Cil.var x) in
+	List.Exceptionless.assoc x_lv amap >>= fun y -> Some (Var y)
+| Mem e -> Option.map (fun e' -> Mem e') (subst amap e)
+
+and subst_offset amap : offset -> offset option = function
+| NoOffset -> Some NoOffset
+| Field(fi,os) ->
+	subst_offset amap os >>= fun os' -> Some (Field(fi,os'))
+| Index(e,os) ->
+	subst amap e >>= fun e' ->
+	subst_offset amap os >>= fun os' ->
+		Some (Index(e',os'))
+
+let propagate fna formals actuals lenv : t =
+	let amap = List.combine actuals formals in
+	(* if e -> x, learn about `x' by evaluating `e' *)
+	let lenv1 = List.fold_left (fun l (e,x) ->
+			match Dom.to_option (eval_exp l e) with
+			| None   -> l
+			| Some b -> gen fna l (Lval(Cil.var x)) b
+		) empty amap
+	in
+	(* if e -> x, try substituting `e' with `x' in previously known facts *)
+	let lenv2 = ExpMap.fold (fun e v l ->
+			match subst amap e with
+			| Some e' -> gen fna l e' v
+			| None    -> l
+		) lenv.facts lenv1
+	in
+	lenv2

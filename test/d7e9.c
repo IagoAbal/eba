@@ -11,10 +11,11 @@ __attribute__ ((noinline)) int nondet() { return 42; }
 
 struct spinlock fake_lock;
 
-int inode_get_rsv_space(struct spinlock *i_lock)
+int inode_get_rsv_space(struct spinlock *i_lock, int y)
 {
   i_lock = (struct spinlock *)1;
-  spin_lock(i_lock); // (4) ERROR
+  if (!(y > 4))
+    spin_lock(i_lock); // (4) ERROR
   // do something
   spin_unlock(i_lock);
   return 0;
@@ -32,7 +33,8 @@ void add_dquot_ref(struct spinlock *i_lock)
       continue;
     }
 
-    if (inode_get_rsv_space(i_lock) > 0) // (3)
+    int x;
+    if (x > 4 && inode_get_rsv_space(i_lock,x) > 0) // (3)
       reserved = 1;
 
     spin_unlock(i_lock);

@@ -89,6 +89,7 @@ type step = {
 	kind : step_kind;
 	effs : Effects.t;
 	sloc : Cil.location;
+	lenv : Lenv.t;
 }
 
 type cond = Cond of test_kind * Cil.exp * Cil.location
@@ -152,7 +153,7 @@ let group_by_loc fnAbs lenv instrs :step list * E.t * Lenv.t =
 	let steps = iss |> List.map (fun is ->
 		let loc = Cil.get_instrLoc (List.hd is) in
 		let ef = AFun.effect_of_instr fnAbs loc in
-		{ kind = Stmt is; effs = ef; sloc = loc; }
+		{ kind = Stmt is; effs = ef; sloc = loc; lenv; }
 	) in
 	let effects, lenv' = List.fold_left (fun (acc,le) step ->
 		E.(step.effs + acc), lenv_from_step fnAbs le step
@@ -197,6 +198,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 			kind = Goto(lbl,dst_loc);
 			effs = E.none;
 			sloc = loc;
+			lenv;
 		} in
 		Seq(goto,nxt)
 	| Cil.Instr instrs ->
@@ -219,6 +221,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 			kind = Ret e_opt;
 			effs = ef;
 			sloc = loc;
+			lenv;
 		} in
 		Seq(ret,fun () -> Nil)
 	| Cil.If (e,_,_,loc) ->
@@ -274,6 +277,7 @@ let rec generate fnAbs visited lenv if_count node :t =
 			kind = Test(tkind,e);
 			effs = ef;
 			sloc = loc;
+			lenv;
 		} in
 		let alts = fun () -> If(left,right) in
 		Seq(test,alts)
@@ -294,12 +298,12 @@ and generate_if_next fnAbs visited lenv if_count node =
  * are free of that kind of side-effects, thus we just need
  * to check it for the `Instr' case.
  *)
-let paths_of (fnAbs :AFun.t) :t delayed =
+let paths_of ?(lenv0=Lenv.empty) (fnAbs :AFun.t) :t delayed =
 	let fd = AFun.fundec fnAbs in
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> fun () -> Nil
-	| nd0::_ -> fun () -> generate fnAbs Edges.empty Lenv.empty 0 nd0
+	| nd0::_ -> fun () -> generate fnAbs Edges.empty lenv0 0 nd0
 
 type path = path_entry list
 
@@ -403,14 +407,15 @@ and keep_searching ks ~guard ~target ~trace st step t' =
 
 let inline callerAbs step =
 	match step.kind with
-	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),_,_)]) ->
+	| Stmt([Cil.Call(_,Cil.Lval (Cil.Var fn,Cil.NoOffset),actuals,_)]) ->
 		begin match AFun.call callerAbs fn step.sloc with
 		| None ->
 			Log.warn "COULD NOT INLINE call to %s" Cil.(fn.vname);
 			None
 		| Some fnAbs ->
 			Log.info "INLINING call to %s" Cil.(fn.vname);
-			Some (fnAbs, paths_of fnAbs)
+			let lenv0 = Lenv.propagate fnAbs Cil.((AFun.fundec fnAbs).sformals) actuals step.lenv in
+			Some (fnAbs, paths_of ~lenv0 fnAbs)
 		end
 	| _else ->
 		Log.info "COULD NOT INLINE :-(";

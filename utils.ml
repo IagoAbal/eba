@@ -36,6 +36,20 @@ module Option = struct
 	let (=>?) guard v =
 		if guard then Some v else None
 
+let fold_left_break ~f y0 xs =
+	let open Option.Infix in
+	let open Return in
+	label (fun break ->
+		List.fold_left (fun y_opt x ->
+			y_opt >>= fun y ->
+			match f y x with
+			| None    -> return break None
+			| Some y1 -> Some y1
+		)
+		(Some y0)
+		xs
+	)
+
 end
 
 let string_of_cil ppr x :string =

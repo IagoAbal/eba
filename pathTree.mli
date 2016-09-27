@@ -20,6 +20,7 @@ type step = {
 	kind : step_kind;
 	effs : Effects.t;
 	sloc : Cil.location;
+	lenv : Lenv.t;
 }
 
 val find_in_stmt : (Cil.instr list -> 'a option) -> step -> 'a option
@@ -60,7 +61,7 @@ type t = Nil
  * The algorithm inserts [Nil] and backtracks when an already
  * visited state is reached.
  *)
-val paths_of : AFun.t -> t delayed
+val paths_of : ?lenv0:Lenv.t -> AFun.t -> t delayed
 
 type 'st pred = 'st -> step -> 'st option
 
