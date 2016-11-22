@@ -1,0 +1,6 @@
+{
+  "name": "EBA",
+  "tagline": "An effective bug finder for C",
+  "body": "EBA is a prototype tool to find non-trivial resource manipulation bugs in C programs, at compile-time, and super-fast.\r\n\r\nIn its few months of existence, EBA has found several double-lock bugs in Linux 4.7--4.9 releases (i.e. in code that has passed code reviews).\r\n\r\n- HSI: cmt_speech: Fix double spin_lock\r\n- usb: gadget: pch_udc: reorder spin_[un]lock to avoid deadlock\r\n- ath10k: fix deadlock while processing rx_in_ord_ind\r\n- net: ethernet: ti: cpdma: fix lockup in cpdma_ctlr_destroy()\r\n- libceph: ceph_build_auth() doesn't need ceph_auth_build_hello()\r\n- [PATCH] Fix: scsi: megaraid: reduce the scope of pending-list lock to avoid double lock\r\n- iommu/vt-d: Fix dead-locks in disable_dmar_iommu() path (cf. [PATCH] iommu: fix double spin_lock_irqsave on `device_domain_lock')\r\n\r\nAll the above bugs are caught by EBA in a matter of _seconds_.\r\n\r\n\r\n\r\n\r\n",
+  "note": "Don't delete this file! It's used internally to help with page regeneration."
+}

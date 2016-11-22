@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="EBA : An effective bug finder for C">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>EBA</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/iagoabal/eba">View on GitHub</a>
+
+          <h1 id="project_title">EBA</h1>
+          <h2 id="project_tagline">An effective bug finder for C</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/iagoabal/eba/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/iagoabal/eba/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <p>EBA is a prototype tool to find non-trivial resource manipulation bugs in C programs, at compile-time, and super-fast.</p>
+
+<p>In its few months of existence, EBA has found several double-lock bugs in Linux 4.7--4.9 releases (i.e. in code that has passed code reviews).</p>
+
+<ul>
+<li>HSI: cmt_speech: Fix double spin_lock</li>
+<li>usb: gadget: pch_udc: reorder spin_[un]lock to avoid deadlock</li>
+<li>ath10k: fix deadlock while processing rx_in_ord_ind</li>
+<li>net: ethernet: ti: cpdma: fix lockup in cpdma_ctlr_destroy()</li>
+<li>libceph: ceph_build_auth() doesn't need ceph_auth_build_hello()</li>
+<li>[PATCH] Fix: scsi: megaraid: reduce the scope of pending-list lock to avoid double lock</li>
+<li>iommu/vt-d: Fix dead-locks in disable_dmar_iommu() path (cf. [PATCH] iommu: fix double spin_lock_irqsave on `device_domain_lock')</li>
+</ul>
+
+<p>All the above bugs are caught by EBA in a matter of <em>seconds</em>.</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">EBA maintained by <a href="https://github.com/iagoabal">iagoabal</a></p>
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
