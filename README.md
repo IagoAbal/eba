@@ -1,6 +1,6 @@
-# The EBA bug finder
+# EBA: An effective bug finder for C
 
-EBA is a proof-of-concept bug finder.
+EBA is a prototype bug finder for C based on side-effect analysis and model-checking.
 
 For now, you can use it to find double-lock bugs in the Linux kernel. In order to check _path/to/file.c_ do:
 
@@ -13,20 +13,13 @@ There are some options you can use:
 
 In the _bin_ folder there are some scripts to run EBA along with the build process.
 
-## Bugs found
+### Hows does it work?
 
-So far I've only used EBA to analyze the Linux 4.7 release.
+It combines side-effect analysis and model-checking, check the website for more info: [http://www.iagoabal.eu/eba/](http://www.iagoabal.eu/eba/)
 
-I can truly claim credit for these bugs:
+### Does it really find bugs?
 
-- [HSI: cmt_speech: Fix double spin_lock](https://github.com/torvalds/linux/commit/3c13ab1d96e1924ef73b1a20c1ccccc993b6fb58)
-- [usb: gadget: pch_udc: reorder spin_un/lock to avoid deadlock](https://github.com/torvalds/linux/commit/1d23d16a88e6c8143b07339435ba061b131ebb8c)
-
-EBA has found another two confirmed double-lock bugs, but I was slow at reporting them and they got fixed in the meantime. Too bad.
-
-EBA reported another two double-lock bugs that, while supposedly could not occur in practice, lead to style and dead-code elimination bug-fixes.
-
-There are three more waiting any kind of confirmation by Linux maintainers, and a few more that I haven't report yet.
+Yes, it really does, check the website for more info: [http://www.iagoabal.eu/eba/](http://www.iagoabal.eu/eba/)
 
 ## Installation
 
