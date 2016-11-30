@@ -47,6 +47,10 @@
 <li>
 <a href="https://github.com/torvalds/linux/commit/bea64033dd7b5fb6296eda8266acab6364ce1554">iommu/vt-d: Fix dead-locks in disable_dmar_iommu() path</a> [3]</li>
 <li><a href="http://www.spinics.net/lists/linux-serial/msg24393.html">Re: Potential double-lock BUG in drivers/tty/serial/sh-sci.c (Linux 4.9)</a></li>
+<li>
+<a href="https://www.mail-archive.com/netdev@vger.kernel.org/msg138296.html">Potential deadlock BUG in drivers/net/wireless/st/cw1200/sta.c (Linux 4.9)</a> [4]</li>
+<li>
+<a href="http://www.spinics.net/lists/arm-kernel/msg543590.html">Potential deadlock BUG in Linux 4.9 drivers/dma/coh901318.c</a> [4]</li>
 </ul>
 
 <p>[1] I reported this bug in private email communication with Kalle Valo, but I was slow and the bug had been found and fixed already.</p>
@@ -55,6 +59,8 @@
 
 <p>[3] For some reason I was not credited, but <a href="https://lists.linuxfoundation.org/pipermail/iommu/2016-September/018614.html">I reported this bug!</a></p>
 
+<p>[4] To be confirmed.</p>
+
 <h2>
 <a id="how-to-get-it" class="anchor" href="#how-to-get-it" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>How to get it?</h2>
 
@@ -62,6 +68,8 @@
 
 <h2>
 <a id="foundations" class="anchor" href="#foundations" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Foundations</h2>
+
+<p>EBA first uses side-effect analysis to build a program abstraction. This abstraction is later model checked in search of bug patterns.</p>
 
 <ul>
 <li><a href="http://dl.iagoabal.eu/eba/short.pdf">A short 2-page paper about EBA (the evaluation results are outdated)</a></li>
