@@ -1,0 +1,8 @@
+title: EBA
+description: An effective bug finder for C
+google_analytics: 
+show_downloads: true
+theme: jekyll-theme-tactile
+
+gems:
+  - jekyll-mentions
