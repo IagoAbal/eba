@@ -1,6 +1,6 @@
 EBA is a prototype tool to find non-trivial resource manipulation bugs in C programs, at compile-time, and super-fast.
 
-In its few months of existence, EBA has found several double-lock bugs in Linux 4.7--4.9 releases (i.e. in code that has passed code reviews). All the following bugs are caught by EBA in a matter of _seconds_:
+In its few months of existence, EBA has found several double-lock bugs in Linux 4.7--4.10 releases (i.e. in code that has passed code reviews). All the following bugs are caught by EBA in a matter of _seconds_:
 
 - [HSI: cmt_speech: Fix double spin_lock](https://github.com/torvalds/linux/commit/3c13ab1d96e1924ef73b1a20c1ccccc993b6fb58)
 - [usb: gadget: pch_udc: reorder spin_[un]lock to avoid deadlock](https://github.com/torvalds/linux/commit/1d23d16a88e6c8143b07339435ba061b131ebb8c)
@@ -14,6 +14,7 @@ In its few months of existence, EBA has found several double-lock bugs in Linux 
 - [Potential deadlock BUG in Linux 4.9 drivers/dma/coh901318.c](http://www.spinics.net/lists/arm-kernel/msg543590.html) [4]
 - [[PATCH] [media] pctv452e: fix double lock bug](http://www.spinics.net/lists/linux-media/msg108700.html) [4]
 - [Potential double-lock BUG in drivers/infiniband/core/umem_odp.c (Linux 4.9-rc7)](http://www.spinics.net/lists/linux-rdma/msg43736.html) [4]
+- [Potential double-lock BUG in drivers/dma/pl330.c (Linux 4.10-rc2)](http://www.spinics.net/lists/dmaengine/msg12180.html)
 
 [1] I reported this bug in private email communication with Kalle Valo, but I was slow and the bug had been found and fixed already.
 
@@ -41,5 +42,5 @@ EBA first uses side-effect analysis to build a program abstraction. This abstrac
 
 EBA is a tool by Iago Abal.
 
-This project was part of my PhD at IT University of Copenhagen, under the supervision of Andrzej Wasowski and Claus Brabrand.
+This project was originally part of my PhD at IT University of Copenhagen.
 
