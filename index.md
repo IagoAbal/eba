@@ -14,7 +14,7 @@ In its few months of existence, EBA has found several double-lock bugs in Linux 
 - [Potential deadlock BUG in Linux 4.9 drivers/dma/coh901318.c](http://www.spinics.net/lists/arm-kernel/msg543590.html) [4]
 - [[PATCH] [media] pctv452e: fix double lock bug](http://www.spinics.net/lists/linux-media/msg108700.html) [4]
 - [Potential double-lock BUG in drivers/infiniband/core/umem_odp.c (Linux 4.9-rc7)](http://www.spinics.net/lists/linux-rdma/msg43736.html) [4]
-- [Potential double-lock BUG in drivers/dma/pl330.c (Linux 4.10-rc2)](http://www.spinics.net/lists/dmaengine/msg12180.html)
+- [dmaengine: pl330: fix double lock](https://github.com/torvalds/linux/commit/91539eb1fda2d530d3b268eef542c5414e54bf1a)
 
 [1] I reported this bug in private email communication with Kalle Valo, but I was slow and the bug had been found and fixed already.
 
