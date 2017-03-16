@@ -182,7 +182,14 @@ let succs_of_if if_node =
 	| [els;thn] -> Some els, thn
 	| _else____ -> Error.panic_with "PathThree.generate(If): more than two succesors"
 
-let rec generate fnAbs visited lenv if_count node :t =
+type gen_st = {
+	g_fna      : AFun.t;
+	g_visited  : visited;
+	g_lenv     : Lenv.t;
+	g_if_count : int;
+}
+
+let rec generate (st :gen_st) node :t =
 	let sk = Cil.(node.skind) in
 	match sk with
 	| Cil.Instr [] (* label: e.g. as a result of prepareCFG *)
@@ -190,30 +197,30 @@ let rec generate fnAbs visited lenv if_count node :t =
 	| Cil.Continue _
 	| Cil.Loop _
 	| Cil.Block _ ->
-		generate_if_next fnAbs visited lenv if_count node
+		generate_if_next st node
 	| Cil.Goto(stmt_ref,loc) ->
-		generate_from_goto fnAbs visited lenv if_count node stmt_ref loc
+		generate_from_goto st node stmt_ref loc
 	| Cil.Instr instrs ->
-		generate_from_instrs fnAbs visited lenv if_count node instrs
+		generate_from_instrs st node instrs
 	| Cil.Return(e_opt,loc) ->
-		let ef = AFun.effect_of_expr fnAbs loc in
+		let ef = AFun.effect_of_expr st.g_fna loc in
 		let ret = {
 			kind = Ret e_opt;
 			effs = ef;
 			sloc = loc;
-			lenv;
+			lenv = st.g_lenv;
 		} in
 		Seq(ret,fun () -> Nil)
 	| Cil.If (e,_,_,loc) ->
-		generate_from_if fnAbs visited lenv if_count node e loc
+		generate_from_if st node e loc
 	| Cil.ComputedGoto _
 	| Cil.Switch _
 	| Cil.TryFinally _
 	| Cil.TryExcept _ ->
 		Error.panic_with("PathTree.generate: found computed-goto, switch, try-finally or try-except")
 
-and generate_from_goto fnAbs visited lenv if_count node stmt_ref loc =
-	let nxt = fun () -> generate_if_next fnAbs visited lenv if_count node in
+and generate_from_goto st node stmt_ref loc =
+	let nxt = fun () -> generate_if_next st node in
 	let target = !stmt_ref in
 	let target_labels = Cil.(target.labels) in
 	assert (not (List.is_empty target_labels));
@@ -223,16 +230,20 @@ and generate_from_goto fnAbs visited lenv if_count node stmt_ref loc =
 		kind = Goto(lbl,dst_loc);
 		effs = E.none;
 		sloc = loc;
-		lenv;
+		lenv = st.g_lenv;
 	} in
 	Seq(goto,nxt)
 
-and generate_from_instrs fnAbs visited lenv if_count node instrs =
-	let iss, _sumef, lenv' = group_by_loc fnAbs lenv instrs in
+and generate_from_instrs st node instrs =
+	let fna = st.g_fna in
+	let lenv = st.g_lenv in
+	let visited = st.g_visited in
+	let iss, _sumef, lenv' = group_by_loc fna lenv instrs in
 	let next =
 		(* NB: CIL doesn't insert a return if the instr is 'exit'. *)
 		Option.map_default (fun (node',visited') ->
-			fun () -> generate fnAbs visited' lenv' if_count node'
+			let st' = { st with g_visited = visited'; g_lenv = lenv'; } in
+			fun () -> generate st' node'
 		) (fun () -> Nil) (next_lone visited node)
 	in
 	(List.fold_right (fun s nxt ->
@@ -242,7 +253,7 @@ and generate_from_instrs fnAbs visited lenv if_count node instrs =
 		else fun () -> Seq(s,nxt)
 	) iss next) ()
 
-and take_if_branch fnAbs visited lenv if_count node e loc cond e_val dec node' =
+and take_if_branch st node e loc cond e_val dec node' =
 	match dec, e_val with
 	| false, Lenv.Dom.NonZero ->
 		Log.debug "%s: skip else branch: %s evaluates to true"
@@ -255,16 +266,25 @@ and take_if_branch fnAbs visited lenv if_count node e loc cond e_val dec node' =
 			(Utils.string_of_cil Cil.d_exp e);
 		fun () -> Nil
 	| _else__________________ ->
-	(* TODO: if Some dec ~ e_val we can hide the cond from the bug trace. *)
+		let fna = st.g_fna in
+		let visited = st.g_visited in
+		let lenv = st.g_lenv in
+		(* TODO: if Some dec ~ e_val we can hide the cond from the bug trace. *)
 		match take_edge visited node node' with
 		| None ->
 			fun () -> Nil
 		| Some visited' ->
-			let lenv' = Lenv.from_test fnAbs lenv dec e in
-			let alt = fun () -> generate fnAbs visited' lenv' (if_count+1) node' in
+			let lenv' = Lenv.from_test fna lenv dec e in
+			let st' = { st with
+				g_visited = visited';
+				g_lenv = lenv';
+				g_if_count = st.g_if_count+1;
+				}
+			in
+			let alt = fun () -> generate st' node' in
 			fun () -> Assume (cond,dec,alt)
 
-and take_else_branch fnAbs visited lenv if_count node e loc cond e_val if_else_opt =
+and take_else_branch st node e loc cond e_val if_else_opt =
 	match if_else_opt with
 	| None         ->
 		fun () -> Nil
@@ -276,39 +296,42 @@ and take_else_branch fnAbs visited lenv if_count node e loc cond e_val if_else_o
 		 * paths. Another source of path explosion are switch statements
 		 * inside a loop.
 		 *)
+		let if_count = st.g_if_count in
 		if if_count <= Opts.branch_limit()
-		then take_if_branch fnAbs visited lenv if_count node e loc cond e_val false if_else
+		then take_if_branch st node e loc cond e_val false if_else
 		else begin
 			Log.warn "Cut off search at %s: too many (%d) ifS!" (Utils.Location.to_string loc) if_count;
 			fun () -> Nil (* no more branching ! *)
 		end
 
-and generate_from_if fnAbs visited lenv if_count node e loc =
+and generate_from_if st node e loc =
 	let tkind = tk_of_option (CE.is_while_test node) in
 	let cond = Cond(tkind,e,loc) in
-	let ef = AFun.effect_of_expr fnAbs loc in
+	let ef = AFun.effect_of_expr st.g_fna loc in
 	(* THINK: What would be the smart strategy when `branch_limit' is reached? *)
 	let if_else_opt, if_then = succs_of_if node in
-	let e_val = Lenv.eval lenv e in
+	let e_val = Lenv.eval st.g_lenv e in
 	let left (* else *) =
-		take_else_branch fnAbs visited lenv if_count node e loc cond e_val if_else_opt
+		take_else_branch st node e loc cond e_val if_else_opt
 	in
 	let right (* then *) =
-		take_if_branch fnAbs visited lenv if_count node e loc cond e_val true if_then
+		take_if_branch st node e loc cond e_val true if_then
 	in
 	let test = {
 		kind = Test(tkind,e);
 		effs = ef;
 		sloc = loc;
-		lenv;
+		lenv = st.g_lenv;
 	} in
 	let alts = fun () -> If(left,right) in
 	Seq(test,alts)
 
-and generate_if_next fnAbs visited lenv if_count node =
-	match next_lone visited node with
+and generate_if_next st node =
+	match next_lone st.g_visited node with
 	| None                  -> Nil
-	| Some (node',visited') -> generate fnAbs visited' lenv if_count node'
+	| Some (node',visited') ->
+		let st' = { st with g_visited = visited'; } in
+		generate st' node'
 
 (* [Note !noret]
  * We cut off the exploration of a path if we find !noret,
@@ -321,7 +344,15 @@ let paths_of ?(lenv0=Lenv.empty) (fnAbs :AFun.t) :t delayed =
 	let body = Cil.(fd.sbody) in
 	match Cil.(body.bstmts) with
 	| []     -> fun () -> Nil
-	| nd0::_ -> fun () -> generate fnAbs Edges.empty lenv0 0 nd0
+	| nd0::_ -> fun () ->
+		let st0 = {
+			g_fna = fnAbs;
+			g_visited = Edges.empty;
+			g_lenv = lenv0;
+			g_if_count = 0;
+			}
+		in
+		generate st0 nd0
 
 type path = path_entry list
 
