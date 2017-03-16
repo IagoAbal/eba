@@ -5,7 +5,7 @@ type t = int
 
 let fresh = unique
 
-let compare = compare
+let compare = Int.compare
 
 let to_int u = u
 
