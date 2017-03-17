@@ -12,3 +12,6 @@
 
   $ eba -L path/pch_udc.c 2>/dev/null | grep "Double lock"
   Double lock (*) (glob)
+
+  $ eba -L path/builtinexpect.c 2>/dev/null | grep "Double lock"
+  [1]

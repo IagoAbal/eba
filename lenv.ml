@@ -329,6 +329,10 @@ let rec from_stmt fnAbs lenv ef = function
 | (Set(lv,e,_)::stmt') ->
 	let lenv' = from_set fnAbs lenv ef (Lval lv) (CE.stripCastsOp e) in
 	from_stmt fnAbs lenv' ef stmt'
+| (Call(Some lv, Lval(Var f,NoOffset), [value;_expected], _)::stmt')
+when f.vname = "__builtin_expect" ->
+	let lenv' = from_set fnAbs lenv ef (Lval lv) (CE.stripCastsOp value) in
+	from_stmt fnAbs lenv' ef stmt'
 (* Otherwise (e.g. asm) kill any variable that has been updated. *)
 | __else_____________________ ->
 	kill_updated fnAbs lenv ef
