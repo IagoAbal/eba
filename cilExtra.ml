@@ -3,6 +3,19 @@ open Batteries
 
 open Cil
 
+(* TODO: We can also negate Le, Ge, Lt and Gt *)
+let negateExp = function
+| Const(CInt64(c,k,str)) when c = Int64.zero ->
+	Some(Const(CInt64(Int64.one,k,str)))
+| Const(CInt64(c,k,str)) when c <> Int64.zero ->
+	Some(Const(CInt64(Int64.zero,k,str)))
+| BinOp(Eq,a1,b1,ty1) ->
+	Some(BinOp(Ne,a1,b1,ty1))
+| BinOp(Ne,a1,b1,ty1) ->
+	Some(BinOp(Eq,a1,b1,ty1))
+| _else______________ ->
+	None
+
 (** Like Cil.stripCast but it also recurses into operations. *)
 let rec stripCastsOp = function
 | CastE(_, e)        -> stripCastsOp e

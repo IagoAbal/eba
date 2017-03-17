@@ -188,7 +188,17 @@ let kill_by_region lenv r =
 		}
 
 (* Shortcut *)
-let find_exp lenv e = ExpMap.Exceptionless.find e lenv.facts
+let find_exp lenv e =
+	match ExpMap.Exceptionless.find e lenv.facts with
+	| Some v  -> Some v
+	| None    ->
+	(* TODO:
+	 * Besides negating, we can also "reverse it", so if we cannot find
+	 * a < b, then we can search for b > a instead.
+	 *)
+	match CE.negateExp e with
+	| Some e1 -> Option.map not (ExpMap.Exceptionless.find e1 lenv.facts)
+	| None    -> None
 
 (***************************************************)
 (* Evaluation of expressions under the abstraction *)
