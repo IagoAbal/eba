@@ -92,6 +92,7 @@ let infer_files verbosity
 	Opts.Set.match_lock_exp (not flag_no_match_lock_exp);
 	Opts.Set.ignore_writes flag_ignore_writes;
 	let checks = { chk_uninit; chk_dlock; chk_birq } in
+	Axioms.load_axioms();
 	List.iter (infer_file checks) files
 
 let files = Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE")

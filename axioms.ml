@@ -193,6 +193,8 @@ end
 
 module Partial : sig
 
+	val load_axioms : unit -> unit
+
 	val find : Cil.varinfo -> shape -> E.t option
 
 	val mk_default : Cil.varinfo -> shape scheme
@@ -369,7 +371,10 @@ end = struct
 	let add_axiom tbl (Axiom(fn,mk)) = Hashtbl.add tbl fn mk
 
 	let axiom_map : (name,mk_effects) Hashtbl.t  =
-		let tbl = Hashtbl.create 23 in
+		Hashtbl.create 23
+
+	let load_axioms() =
+		let tbl = axiom_map in
 		add_axiom tbl ax_spin_lock;
 		add_axiom tbl ax_raw_spin_lock;
 		add_axiom tbl ax_spin_unlock;
@@ -392,8 +397,7 @@ end = struct
 			add_axiom tbl ax_raw_read_lock;
 			add_axiom tbl ax_raw_read_unlock;
 			add_axiom tbl ax__raw_read_unlock;
-		end;
-		tbl
+		end
 
 	let find x xz =
 		match Hashtbl.Exceptionless.find axiom_map Cil.(x.vname) with
@@ -505,6 +509,9 @@ module Onsite = struct
 		else E.none
 
 end
+
+let load_axioms () =
+	Partial.load_axioms()
 
 (* TODO: Should check that the axiom is compatible with the function's signature. *)
 let find f =
