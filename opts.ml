@@ -32,7 +32,7 @@ let opts : copts = {
 
 	inline_limit = 5;
 	loop_limit = 1;
-	branch_limit = 15;
+	branch_limit = 10;
 	path_check = true;
 
 	all_lock_types = false;
