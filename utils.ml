@@ -26,6 +26,14 @@ let green = colored "0;32"
 let purple = colored "0;35"
 let cyan = colored "0;36"
 
+let check_if_file_exists fname :unit =
+	if Sys.file_exists fname
+	then ()
+	else begin
+		Printf.eprintf "eba: cannot analyze `%s': File not found\n" fname;
+		exit 1
+	end
+
 module Option = struct
 
 	let (<|>) opt1 opt2 = fun x ->

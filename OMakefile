@@ -7,6 +7,7 @@ FILES[] =
     pP
     uniq
     opts
+    gcc
     type
     axioms
     env
@@ -25,7 +26,7 @@ USE_OCAMLFIND = true
 BYTE_ENABLED = true
 NATIVE_ENABLED = true
 
-OCAMLPACKS[] += batteries cil ocamlgraph smart_print cmdliner dolog
+OCAMLPACKS[] += batteries cil ocamlgraph smart_print cmdliner dolog fpath
 OCAMLFLAGS += -thread
 
 OCamlLibrary(libeba, $(FILES))

@@ -57,6 +57,9 @@ let infer_file checks fn =
 		Printf.fprintf stderr "========================\n"
 	end
 
+let infer_file_gcc checks args =
+	let fn = Gcc.gcc args in
+	infer_file checks fn
 
 (* CLI *)
 
@@ -67,7 +70,7 @@ let log_level_of_int = function
 	| x -> Log.DEBUG (* x >= 3 *)
 
 let infer_files verbosity
-		flag_gcstats flag_saveabs flag_warn_output
+		flag_gcstats flag_saveabs flag_warn_output flag_fake_gcc
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
 		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
 		flag_all_lock_types flag_no_match_lock_exp flag_ignore_writes
@@ -93,9 +96,14 @@ let infer_files verbosity
 	Opts.Set.ignore_writes flag_ignore_writes;
 	let checks = { chk_uninit; chk_dlock; chk_birq } in
 	Axioms.load_axioms();
-	List.iter (infer_file checks) files
+	if flag_fake_gcc
+	then infer_file_gcc checks files
+	else begin
+		List.iter Utils.check_if_file_exists files;
+		List.iter (infer_file checks) files
+	end
 
-let files = Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE")
+let files = Arg.(non_empty & pos_all string [] & info [] ~docv:"FILE")
 
 (* General *)
 
@@ -115,6 +123,10 @@ let flag_saveabs =
 let flag_warn_output =
 	let doc = "Save warns into a .warn file." in
 	Arg.(value & flag & info ["warn-output"] ~doc)
+
+let flag_fake_gcc =
+	let doc = "Fake GCC and preprocess input file." in
+	Arg.(value & flag & info ["fake-gcc"] ~doc)
 
 (* Type inferrer*)
 
@@ -185,10 +197,18 @@ let check_birq =
 
 let cmd =
 	let doc = "Effect-based analysis of C programs" in
-	let man = [ `S "DESCRIPTION"; `P "Author: Iago Abal <mail@iagoabal.eu>."; ] in
+	let man =
+	[
+		`S "DESCRIPTION";
+		`P "Author: Iago Abal <mail@iagoabal.eu>.";
+
+		`P "To preprocess the input use `--fake-gcc' and pass the necessary arguments after `--', as in:";
+		`P "eba --fake-gcc -- -Iinclude/ foo.c";
+		`P "EBA will extract the `-D', `-include', and `-I' arguments and invoke GCC, any other option will be ignored."
+	] in
 	Term.(pure infer_files
 		$ verbose
-		$ flag_gcstats $ flag_saveabs $ flag_warn_output
+		$ flag_gcstats $ flag_saveabs $ flag_warn_output $ flag_fake_gcc
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
 		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
 		$ flag_all_lock_types $ flag_no_match_lock_exp $ flag_ignore_writes
