@@ -324,14 +324,11 @@ let kill_updated fnAbs lenv ef =
 let from_set fna lenv ef lexp = function
 | Const(CInt64(i,_,_)) ->
 	gen fna lenv lexp (i <> Int64.zero)
-| rexp when ExpMap.mem rexp lenv.facts ->
-	find_exp lenv rexp |> Option.map_default (fun rexp_val ->
-			gen fna lenv lexp rexp_val
-		)
-		lenv
-(* Otherwise kill the variable *)
-| __else______________ ->
-	kill_updated fna lenv ef
+| rexp ->
+	match Dom.to_option (eval_exp lenv rexp) with
+	| Some rexp_val -> gen fna lenv lexp rexp_val
+	(* Otherwise kill the variable *)
+	| None -> kill_updated fna lenv ef
 
 (* FIXME: We can be more precise if we have the effects of the individual instructions. *)
 let rec from_stmt fnAbs lenv ef = function

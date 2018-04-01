@@ -15,3 +15,6 @@
 
   $ eba -L path/builtinexpect.c 2>/dev/null | grep "Double lock"
   [1]
+
+  $ eba -L path/builtinexpect1.c 2>/dev/null | grep "Double lock"
+  [1]
