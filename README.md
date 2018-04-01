@@ -25,15 +25,20 @@ Yes, it really does, check the website for more info: [http://www.iagoabal.eu/eb
 
 You will need OCaml 4.01 (see [https://github.com/cil-project/cil/issues/18](https://github.com/cil-project/cil/issues/18)), preferrably just install [OPAM](http://opam.ocaml.org).
 
+Setup customized CIL for EBA:
+
+    git clone git@github.com:IagoAbal/eba-cil.git
+    opam pin add -n cil eba-cil/
+
+Install dependencies
+
+    opam install batteries cil smart-print cmdliner dolog ocamlgraph
+
 Download the source code.
 
 Install _omake_ if necessary.
 
     sudo apt-get install omake
-
-Install dependencies
-
-    opam install batteries cil smart-print cmdliner dolog ocamlgraph
 
 Invoke omake (you build in parallel using -j):
 

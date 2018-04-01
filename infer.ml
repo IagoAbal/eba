@@ -260,7 +260,7 @@ let of_instr fnAbs (env :Env.t)
 	   | Some lv -> with_lval_set env z' sf'' sk' lv
 	   end
 	(* Oops, unsound :_( *)
-	| Cil.Asm (_,_,outs,inps,_,_) ->
+	| Cil.Asm (_,_,outs,inps,_,_,_) ->
 		let fx_in, k_in = List.fold_left (fun (fx,k) (_,_,e) ->
 			let _z, fx_e, k_e = of_exp env e in
 			E.(fx + fx_e), K.(k + k_e)
