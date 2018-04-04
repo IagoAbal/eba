@@ -1,0 +1,21 @@
+opam-verision: "1.2"
+name: "eba"
+version: "0.1"
+maintainer: "Iago Abal <mail@iagoabal.eu>"
+author: "Iago Abal <mail@iagoabal.eu>"
+homepage: "https://github.com/IagoAbal/eba/"
+bug-reports: "https://github.com/IagoAbal/eba/issues"
+dev-repo: "git://github.com/IagoAbal/eba/"
+license: "BSD3"
+build: ["jbuilder" "build" "-p" name "-j" jobs]
+depends: [
+    "jbuilder" {build}
+    "batteries"
+    "cil" {= "1.7.4-eba"}
+    "ocamlgraph"
+    "smart-print"
+    "cmdliner"
+    "dolog"
+    "fpath"
+    ]
+available: [ ocaml-version >= "4.03"]

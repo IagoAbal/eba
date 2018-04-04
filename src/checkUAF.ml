@@ -50,9 +50,9 @@ module Spec = struct
 
 	let frees r ef :bool = E.(mem_must (frees r) ef)
 
-	let uses r ef :bool = E.(mem_must (reads r) ef)
+	let uses r ef :bool = E.(mem (frees r) ef)
 
-	let may_use r ef :bool = E.(mem (reads r) ef) || E.(mem (writes r) ef) || E.(mem (frees r) ef) || E.(mem (locks r) ef)
+	let may_use r ef :bool = E.(mem (frees r) ef)
 
 	let may_use_any rs ef :bool = Regions.exists (fun r -> may_use r ef) rs
 
