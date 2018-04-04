@@ -142,6 +142,10 @@ end = struct
 		in
 		Axiom("memcpy", Scheme.({vars; body}))
 
+	let kfree :axiom =
+		let Axiom(_,sch) = free in
+		Axiom("kfree", sch)
+
 	let local_bh_enable :axiom =
 		let r0 = Region.meta() in
 		let f1 = EffectVar.bound_with E.(just BhsOn) in
@@ -181,6 +185,7 @@ end = struct
 		add_axiom tbl malloc;
 		add_axiom tbl free;
 		add_axiom tbl memcpy;
+		add_axiom tbl kfree;
 		add_axiom tbl local_bh_enable;
 		add_axiom tbl local_bh_disable;
 		tbl

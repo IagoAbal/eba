@@ -19,6 +19,7 @@ FILES[] =
     flow1Checker
     checkUninitFlow1
     flow2Checker
+    checkUAF
     checkDLockFlow2
     checkBhOnIrqFlow2
 

@@ -177,6 +177,8 @@ module rec Shape : sig
 
 	val regions_in : t -> Regions.t
 
+	val sregions_of : t -> Regions.t
+
 	val fully_read : t -> Effects.t
 
 	val fully_RW : t -> Effects.t
@@ -663,6 +665,32 @@ module rec Shape : sig
 		let h _ x = x in
 		foldv f g h Regions.empty z
 
+	(* NOTE: Since we only recurse on structs, and not on pointers to structs,
+	 * there should be no danger of infinite recursion.
+	 *)
+	let rec sregions_of_struct s =
+		List.enum (list_fields s)
+		|> Enum.map (fun fz -> sregions_of_member fz.fshape)
+		|> Regions.sum_enum
+
+	and sregions_of_member = function
+		| Ref(r,Struct s) -> Regions.add r (sregions_of_struct s)
+		| Ref(r,_z) -> Regions.singleton r
+		| _else____ -> Error.panic_with ("sregions_of_member: non-ref shape")
+
+	let sregions_of = function
+		| Var a     -> Regions.empty
+		| Bot       -> Regions.empty
+		| Fun fn    -> Regions.empty
+		| Ptr(Ref (r,Struct s))
+ 		| Ref (r,Struct s) ->
+			Regions.add r (sregions_of_struct s)
+		| Struct s  -> sregions_of_struct s
+		| Ptr(Ref (r,_z))
+ 		| Ref (r,_z) ->
+ 			Regions.singleton r
+ 		| Ptr _z -> Error.panic_with ("sregions_of: found illegal Ptr shape")
+
 	let fully_read z = z
 		|> regions_in
 		|> Regions.enum
@@ -1142,6 +1170,8 @@ and Effects : sig
 
 	val is_uninit : e -> bool
 
+	val is_frees : e -> bool
+
 	val is_locks : e -> bool
 
 	val is_unlocks : e -> bool
@@ -1304,6 +1334,8 @@ and Effects : sig
 
 	let calls ~r = mk_mem Call r
 
+	let frees ~r = mk_mem Free r
+
 	let locks ~r = mk_mem Lock r
 
 	let unlocks ~r = mk_mem Unlock r
@@ -1319,6 +1351,8 @@ and Effects : sig
 	let is_writes = is_mem Write
 
 	let is_uninit = is_mem Uninit
+
+	let is_frees = is_mem Free
 
 	let is_locks = is_mem Lock
 
