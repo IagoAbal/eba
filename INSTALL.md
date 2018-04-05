@@ -28,4 +28,14 @@ You should find the binary in your `$PATH`, if not:
 
 The binary should be in `~/.opam/<OCaml version>/bin/eba`.
 
+Alternatively:
+
+    git clone git@github.com:IagoAbal/eba.git
+    opam pin add -y -n eba eba/
+    opam install eba --deps-only
+    cd eba
+    make
+
+And you will find the binary in `bin/eba`.
+
 Enjoy!
