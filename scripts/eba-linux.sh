@@ -1,59 +1,47 @@
 #!/bin/bash
 
-# Prerequisites:
-# - Linux kernel source already configured (eg. make allyesconfig).
-# - An script called eba-check in your $PATH that does the right thing.
-#
-# Given a number of parallel jobs, and a Linux kernel directory, this script
-# iterates through all the .c files in that directory, preprocess them (copying
-# the result to _eba/path/to/file.c), and calls eba-check on them.
-#
-# Contrary to using make, this script analyzes any file that can be preprocessed,
-# even if it cannot or should not be build.
-
-JOBS="$1"
-DIR="$2"
+readonly linuxdir="$1"
 
 analyze() {
-   CFILE="$1"
-   IFILE="${CFILE%.*}.i"
-   TFILE="_eba/$CFILE"
-   # Preprocess the .c file if no .i exists
-   if [ ! -f "$IFILE" ]; then
-       make "$IFILE" >/dev/null 2>&1
-   fi
-   # If preprocessing worked, analyze it.
-   if [ -f "$IFILE" ]; then
-       mkdir -p "$(dirname $TFILE)"
-       cp --link "$IFILE" "$TFILE"
-       eba-check "$TFILE"
-   fi
+    local cfile="${@: -1}"
+    local ifile="${cfile%.c}.i"
+    local tfile="_eba/${cfile}"
+
+    if [ ! -f "$tfile" ]; then
+        make "${ifile}" >>make.log 2>&1
+        mkdir -p "$(dirname ${tfile})"
+        cp --link "${ifile}" "${tfile}" 2>/dev/null || true
+    fi
+
+    if [ -f "$tfile" ]; then
+        echo -n "Analyzing $cfile ... " >&2
+        /usr/bin/time -o /dev/fd/3 --format="%E" timeout 15m \
+            eba -L --warn-output --externs-do-nothing ${tfile} \
+            3>&2 >>eba.log 2>&1 || true
+    fi
 }
 
 export -f analyze
 
-function usage {
-    echo
-    echo "Usage:  $0 JOBS DIR"
-    echo "EBA-checks the kernel DIR in parallel."
-    echo
-    echo "You must have an eba-check in your \$PATH that does the right thing."
-    echo
-    exit 1
-}
-
-if [ "$1" = "-h" ] || [ "$1" = "--help" ] ; then
-    usage;
-fi
-
-if ! which eba-check | grep eba-check > /dev/null ; then
-    echo "Cannot find your eba-check script!"
+if [ "$1" = "-h" ] || [ "$1" = "--help" ] || 
+[ "$#" -ne 1 ]; then
+    echo "Usage: $0 DIR" >&2
+    echo "" >&2
+    echo "Analyze Linux C sources for double-locks using EBA." >&2
+    echo "" >&2    
+    echo "Prerequisites:" >&2
+    echo "  - Linux kernel source already configured (e.g., make allyesconfig)." >&2
+    echo "  - The 'eba' binary in your \$PATH." >&2
     exit 1
 fi
 
-files=()
-while IFS= read -r -d $'\0' file; do
-    files+=("$file")
-done < <(find "$DIR" -type f -name '*.c' -print0)
+if ! command -v eba > /dev/null; then
+    echo "Cannot find your 'eba' binary!" >&2
+    exit 1
+fi
 
-parallel -j "$JOBS" analyze ::: "${files[@]}"
+echo "OK, let's analyze... (this may take several hours)" >&2
+find "$linuxdir" -type f -name '*.c' -print0 | \
+    while IFS= read -r -d '' file; do
+        analyze "$file"
+    done
