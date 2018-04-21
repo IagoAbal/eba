@@ -32,8 +32,6 @@ If you want to run the tests you will need to install _cram_, for instance using
     sudo apt-get install python-pip
     sudo pip install cram
 
-You should rename _eba.opt_ to _eba_ and move it somewhere in your _$PATH_, otherwise create a symlink.
+You should place _eba_ somewhere in your _$PATH_:
 
-Finally,
-
-    omake test
+    cram test/*.t
