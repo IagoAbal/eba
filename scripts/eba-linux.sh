@@ -14,10 +14,12 @@ analyze() {
     fi
 
     if [ -f "$tfile" ]; then
-        echo -n "Analyzing $cfile ... " >&2
-        /usr/bin/time -o /dev/fd/3 --format="%E" timeout 15m \
+        echo -n "Analyzing $cfile ... " >>eba-linux.log
+        /usr/bin/time -a -o eba-linux.log --format="%E" timeout 15m \
             eba -L --warn-output --externs-do-nothing ${tfile} \
-            3>&2 >>eba.log 2>&1 || true
+            >>eba.log 2>&1 || true
+        rm -f "${tfile}" "${ifile}"
+        rm -f -d "$(dirname ${tfile})"
     fi
 }
 
@@ -40,8 +42,14 @@ if ! command -v eba > /dev/null; then
     exit 1
 fi
 
-echo "OK, let's analyze... (this may take several hours)" >&2
+echo "NOTE: This may take several hours." >&2
+echo -ne "OK, let's analyze...\r" >&2
+file_count=0
 find "$linuxdir" -type f -name '*.c' -print0 | \
     while IFS= read -r -d '' file; do
         analyze "$file"
+        file_count=$((file_count + 1))
+        echo -ne "Analyzed $file_count files...\r" >&2
     done
+echo -ne "\n"
+echo "Done!" >&2

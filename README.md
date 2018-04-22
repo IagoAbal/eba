@@ -2,16 +2,16 @@
 
 EBA is a prototype bug finder for C based on side-effect analysis and model-checking.
 
-For now, you can use it to find double-lock bugs in the Linux kernel:
+For now, you can use it to find double-lock bugs in the Linux kernel, e.g.:
 
     git clone --depth=1 https://github.com/torvalds/linux.git
     cd linux
     make allyesconfig
-    scripts/eba-linux.sh drivers/
+    scripts/eba-linux.sh drivers/net
 
 The script will find all C source files under `drivers/`, call CPP on them, and call EBA to find potential double-locks. Be patient, this may take several hours.
 
-The preprocessed files and the findings of EBA are put under the `_eba` sub-directory. If EBA finds some potential bug in `_eba/path/to/file.c`, it will write the bug traces in `_eba/path/to/file.warn`:
+If EBA finds some potential bug in `path/to/file.c`, it will write the bug traces in `_eba/path/to/file.warn`:
 
     find _eba/ -iname '*.warn'
 
