@@ -221,6 +221,6 @@ let cmd =
 		$ flag_all_lock_types $ flag_no_match_lock_exp $ flag_ignore_writes
 		$ check_uninit $ check_dlock $ check_uaf $ check_birq
 		$ files),
-	Term.info "eba" ~version:"0.1.0" ~doc ~man
+	Term.info "eba" ~version:"0.1" ~doc ~man
 
 let () = match Term.eval cmd with `Error _ -> exit 1 | _ -> exit 0
