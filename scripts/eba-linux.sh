@@ -1,7 +1,5 @@
 #!/bin/bash
 
-readonly linuxdir="$1"
-
 analyze() {
     local cfile="${@: -1}"
     local ifile="${cfile%.c}.i"
@@ -19,15 +17,15 @@ analyze() {
             eba -L --warn-output --externs-do-nothing ${tfile} \
             >>eba.log 2>&1 || true
         rm -f "${tfile}" "${ifile}"
-        rm -f -d "$(dirname ${tfile})"
+        rm -f -d "$(dirname ${tfile})" 2>/dev/null
     fi
 }
 
 export -f analyze
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ] || 
-[ "$#" -ne 1 ]; then
-    echo "Usage: $0 DIR" >&2
+[ "$#" -eq 0 ]; then
+    echo "Usage: $0 DIR [DIR ...]" >&2
     echo "" >&2
     echo "Analyze Linux C sources for double-locks using EBA." >&2
     echo "" >&2    
@@ -45,7 +43,7 @@ fi
 echo "NOTE: This may take several hours." >&2
 echo -ne "OK, let's analyze...\r" >&2
 file_count=0
-find "$linuxdir" -type f -name '*.c' -print0 | \
+find "$@" -type f -name '*.c' -print0 | \
     while IFS= read -r -d '' file; do
         analyze "$file"
         file_count=$((file_count + 1))
