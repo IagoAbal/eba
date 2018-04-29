@@ -1,0 +1,12 @@
+syntax: glob
+
+*~
+*.orig
+_build
+_trash
+_try
+
+bin/
+_tmp/
+
+src/.merlin
