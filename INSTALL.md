@@ -32,7 +32,7 @@ The binary should be in `~/.opam/<OCaml version>/bin/eba`.
 
 Alternatively:
 
-    git clone git@github.com:IagoAbal/eba.git
+    git clone https://github.com/IagoAbal/eba.git
     opam pin add -y -n eba eba/
     opam install eba --deps-only
     cd eba
