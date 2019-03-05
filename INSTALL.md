@@ -13,12 +13,14 @@ If you are installing OPAM for the first time:
 
 Setup customized CIL for EBA:
 
-    git clone git@github.com:IagoAbal/eba-cil.git
+    git clone https://github.com/IagoAbal/eba-cil.git
+    git checkout 653136911cb4cde474d7a322e8d05c4e7674acbd # optional
     opam pin add -n cil eba-cil/
 
 Install EBA itself:
 
-    git clone git@github.com:IagoAbal/eba.git
+    git clone https://github.com/IagoAbal/eba.git
+    git checkout v1.0 # optional
     opam pin add -y -n eba eba/
     opam install eba
 
