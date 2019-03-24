@@ -11,12 +11,11 @@ In its few months of existence, EBA has found several double-lock bugs in Linux 
 - [iommu/vt-d: Fix dead-locks in disable_dmar_iommu() path](https://github.com/torvalds/linux/commit/bea64033dd7b5fb6296eda8266acab6364ce1554) [3]
 - [Re: Potential double-lock BUG in drivers/tty/serial/sh-sci.c (Linux 4.9)](http://www.spinics.net/lists/linux-serial/msg24393.html)
 - [Potential deadlock BUG in drivers/net/wireless/st/cw1200/sta.c (Linux 4.9)](https://www.mail-archive.com/netdev@vger.kernel.org/msg138296.html) [4]
-- [Potential deadlock BUG in Linux 4.9 drivers/dma/coh901318.c](http://www.spinics.net/lists/arm-kernel/msg543590.html) [4]
+- [dmaengine: coh901318: Fix a double-lock bug](https://github.com/torvalds/linux/commit/627469e4445b9b12e0229b3bdf8564d5ce384dd7), note that [I reported that bug and sketched the bug-fix two years ealier](https://www.spinics.net/lists/arm-kernel/msg543590.html).
 - [[PATCH] [media] pctv452e: fix double lock bug](http://www.spinics.net/lists/linux-media/msg108700.html) [4]
 - [Potential double-lock BUG in drivers/infiniband/core/umem_odp.c (Linux 4.9-rc7)](http://www.spinics.net/lists/linux-rdma/msg43736.html) [4]
 - [dmaengine: pl330: fix double lock](https://github.com/torvalds/linux/commit/91539eb1fda2d530d3b268eef542c5414e54bf1a)
 - [cros_ec: Fix deadlock when EC is not responsive at probe](https://github.com/torvalds/linux/commit/d4da97e59e1004aa1a15dd75469def20cd84ab99) [3]
-- [dmaengine: coh901318: Fix a double-lock bug](https://github.com/torvalds/linux/commit/627469e4445b9b12e0229b3bdf8564d5ce384dd7), note that [I reported that bug and sketched the bug-fix two years ealier](https://www.spinics.net/lists/arm-kernel/msg543590.html).
 
 [1] I reported this bug in private email communication with Kalle Valo, but I was slow and the bug had been found and fixed already.
 
