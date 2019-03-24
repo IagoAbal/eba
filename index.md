@@ -16,6 +16,7 @@ In its few months of existence, EBA has found several double-lock bugs in Linux 
 - [Potential double-lock BUG in drivers/infiniband/core/umem_odp.c (Linux 4.9-rc7)](http://www.spinics.net/lists/linux-rdma/msg43736.html) [4]
 - [dmaengine: pl330: fix double lock](https://github.com/torvalds/linux/commit/91539eb1fda2d530d3b268eef542c5414e54bf1a)
 - [cros_ec: Fix deadlock when EC is not responsive at probe](https://github.com/torvalds/linux/commit/d4da97e59e1004aa1a15dd75469def20cd84ab99) [3]
+- [dmaengine: coh901318: Fix a double-lock bug](https://github.com/torvalds/linux/commit/627469e4445b9b12e0229b3bdf8564d5ce384dd7), note that [I reported that bug and sketched the bug-fix two years ealier](https://www.spinics.net/lists/arm-kernel/msg543590.html).
 
 [1] I reported this bug in private email communication with Kalle Valo, but I was slow and the bug had been found and fixed already.
 
@@ -43,5 +44,5 @@ EBA first uses side-effect analysis to build a program abstraction. This abstrac
 
 EBA is a tool by Iago Abal.
 
-This project was originally part of my PhD at IT University of Copenhagen.
+This project was originally part of my PhD at IT University of Copenhagen, where I worked together with [Andrzej Wąsowski](http://www.itu.dk/~wasowski/) and [Claus Brabrand](http://www.itu.dk/people/brabrand/).
 
