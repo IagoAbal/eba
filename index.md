@@ -16,6 +16,7 @@ In its few months of existence, EBA has found several double-lock bugs in Linux 
 - [Potential double-lock BUG in drivers/infiniband/core/umem_odp.c (Linux 4.9-rc7)](http://www.spinics.net/lists/linux-rdma/msg43736.html) [4]
 - [dmaengine: pl330: fix double lock](https://github.com/torvalds/linux/commit/91539eb1fda2d530d3b268eef542c5414e54bf1a)
 - [cros_ec: Fix deadlock when EC is not responsive at probe](https://github.com/torvalds/linux/commit/d4da97e59e1004aa1a15dd75469def20cd84ab99) [3]
+- [Double-lock bug in drivers/isdn/hardware/mISDN/hfcmulti.c](https://www.spinics.net/lists/netdev/msg500187.htm) [4]
 
 [1] I reported this bug in private email communication with Kalle Valo, but I was slow and the bug had been found and fixed already.
 
