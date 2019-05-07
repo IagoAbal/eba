@@ -9,6 +9,7 @@ module L = LazyList
 type checks = {
 	  chk_uninit : bool
 	; chk_dlock  : bool
+        ; chk_dulock : bool
 	; chk_uaf    : bool
 	; chk_birq   : bool
 }
@@ -40,6 +41,8 @@ let run_checks checks file fileAbs :unit =
 		then run_check_fun fd CheckUAF.in_func;
 		if checks.chk_dlock
 		then run_check_fun fd CheckDLockFlow2.in_func;
+                if checks.chk_dulock
+                     then run_check_fun fd CheckDUnlockFlow2.in_func;
 		if checks.chk_birq
 		then run_check_fun fd CheckBhOnIrqFlow2.in_func;
 	)
@@ -77,7 +80,7 @@ let infer_files verbosity
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
 		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
 		flag_all_lock_types flag_no_match_lock_exp flag_ignore_writes
-		chk_uninit chk_dlock chk_uaf chk_birq
+		chk_uninit chk_dlock chk_dulock chk_uaf chk_birq
 		files =
 	(* CIL: do not print #line directives. *)
 	Cil.lineDirectiveStyle := None;
@@ -97,7 +100,7 @@ let infer_files verbosity
 	Opts.Set.all_lock_types flag_all_lock_types;
 	Opts.Set.match_lock_exp (not flag_no_match_lock_exp);
 	Opts.Set.ignore_writes flag_ignore_writes;
-	let checks = { chk_uninit; chk_dlock; chk_uaf; chk_birq } in
+	let checks = { chk_uninit; chk_dlock; chk_dulock; chk_uaf; chk_birq } in
 	Axioms.load_axioms();
 	if flag_fake_gcc
 	then infer_file_gcc checks files
@@ -194,6 +197,10 @@ let check_dlock =
 	let doc = "Check for double locking" in
 	Arg.(value & flag & info ["L"; "dlock"] ~doc)
 
+let check_dulock =
+  let doc = "Check for double unlocking" in
+  Arg.(value & flag & info ["D";"dunlock"] ~doc)
+        
 let check_uaf =
 	let doc = "Check for use-after-free" in
 	Arg.(value & flag & info ["F"; "uaf"] ~doc)
@@ -219,7 +226,7 @@ let cmd =
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
 		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
 		$ flag_all_lock_types $ flag_no_match_lock_exp $ flag_ignore_writes
-		$ check_uninit $ check_dlock $ check_uaf $ check_birq
+		$ check_uninit $ check_dlock $ check_dulock $ check_uaf $ check_birq
 		$ files),
 	Term.info "eba" ~version:"0.1" ~doc ~man
 
