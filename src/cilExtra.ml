@@ -1,6 +1,4 @@
-
 open Batteries
-
 open Cil
 
 (* TODO: We can also negate Le, Ge, Lt and Gt *)
@@ -42,7 +40,7 @@ let arg_is_linux_lock e :bool =
 	| TPtr (TComp(ci,_),_)
 	(* THINK: more? *)
 	when ci.cname = "spinlock" || ci.cname = "mutex" -> true
-	| ty ->
+	| _ ->
 		false
 
 let find_arg_in_call pick instrs : exp option =
@@ -178,7 +176,7 @@ let equal_offset exp1 exp2 =
 let is_labeled_with prefix node :bool =
 	node.labels |> List.exists (function
 	| Label(n,_,false) -> String.starts_with n prefix
-	| x -> false
+	| _ -> false
 	)
 
 let is_labeled_while_continue = is_labeled_with "while_continue"
