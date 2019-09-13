@@ -8,10 +8,10 @@ bug-reports: "https://github.com/IagoAbal/eba/issues"
 dev-repo: "git://github.com/IagoAbal/eba/"
 license: "BSD3"
 build: [
-    ["jbuilder" "build" "-p" name "-j" jobs]
+    ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
-    "jbuilder" {build}
+    "dune" {build}
     "batteries"
     "cil" {= "1.7.4-eba"}
     "ocamlgraph"
@@ -20,4 +20,3 @@ depends: [
     "dolog" {>= "4.0.0"}
     "fpath"
     ]
-available: [ ocaml-version >= "4.01"]

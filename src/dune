@@ -1,0 +1,8 @@
+(executable
+ (name eba)
+ (package eba)
+ (public_name eba)
+ (libraries batteries cil ocamlgraph smart_print cmdliner dolog fpath))
+(env
+  (_
+    (flags (:standard -warn-error -A))))
