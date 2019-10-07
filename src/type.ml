@@ -1,6 +1,7 @@
 module Opts = Opts.Get
 
 open Batteries
+open Dolog
 
 (* THINK: Maybe encapsulate this into a Name module *)
 type name = string

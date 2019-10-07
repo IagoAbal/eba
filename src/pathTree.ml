@@ -15,6 +15,7 @@
  *)
 
 open Batteries
+open Dolog
 
 open Type
 open Abs

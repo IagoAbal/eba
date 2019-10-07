@@ -1,5 +1,6 @@
 
 open Batteries
+open Dolog 
 
 (* Dependency Graph *)
 module Dep = struct

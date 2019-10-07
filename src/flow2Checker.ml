@@ -3,6 +3,7 @@
  *)
 
 open Batteries
+open Dolog
 
 module Opts = Opts.Get
 
