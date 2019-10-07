@@ -1,6 +1,7 @@
 (* FUTURE: Common interface, but several implementations with different trade-offs. *)
 
 open Batteries
+open Dolog
 
 open Type
 open Abs

@@ -17,7 +17,7 @@ depends: [
     "ocamlgraph"
     "smart-print"
     "cmdliner"
-    "dolog"
+    "dolog" {>= "4.0.0"}
     "fpath"
     ]
 available: [ ocaml-version >= "4.01"]

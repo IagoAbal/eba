@@ -1,5 +1,6 @@
 
 open Batteries
+open Dolog
 
 open Type
 

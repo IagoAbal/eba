@@ -1,6 +1,7 @@
 
 open Batteries
 open Cmdliner
+open Dolog
 
 open Abs
 

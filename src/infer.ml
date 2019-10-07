@@ -2,6 +2,7 @@ module Opts = Opts.Get
 
 open Batteries
 open Type
+open Dolog
 
 open Shape
 open Abs
@@ -279,7 +280,7 @@ let of_instr fnAbs (env :Env.t)
 let of_instr_log fnAbs env instr =
 	let loc = Cil.get_instrLoc instr in
 	let f, k = of_instr fnAbs env instr in
-	 Log.debug "Instr effects:\n %s -> %s\n: %s"
+	Log.debug "Instr effects:\n %s -> %s\n: %s"
 		   (Utils.Location.to_string loc)
 		   (Effects.to_string f)
 		   (Utils.string_of_cil Cil.d_instr instr);
