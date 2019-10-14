@@ -18,6 +18,10 @@ type copts = {
 	mutable all_lock_types : bool;
 	mutable match_lock_exp : bool;
 	mutable ignore_writes : bool;
+	(* Double free checker *)
+	mutable match_free_exp : bool;
+	(* Double unlock checker *)
+	mutable match_unlock_exp : bool;
 }
 
 let opts : copts = {
@@ -38,6 +42,10 @@ let opts : copts = {
 	all_lock_types = false;
 	match_lock_exp = true;
 	ignore_writes = false;
+
+	match_free_exp = true;
+	
+	match_unlock_exp = true;
 }
 
 module Set =
@@ -68,6 +76,8 @@ struct
 	let all_lock_types v = opts.all_lock_types <- v
 
 	let match_lock_exp v = opts.match_lock_exp <- v
+
+	let match_unlock_exp v = opts.match_unlock_exp <- v
 
 	let ignore_writes v = opts.ignore_writes <- v
 
@@ -101,6 +111,8 @@ struct
 	let all_lock_types () = opts.all_lock_types
 
 	let match_lock_exp () = opts.match_lock_exp
+
+	let match_unlock_exp () = opts.match_unlock_exp
 
 	let ignore_writes () = opts.ignore_writes
 

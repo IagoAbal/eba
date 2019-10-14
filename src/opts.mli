@@ -27,6 +27,8 @@ module Set : sig
 
 	val match_lock_exp : bool -> unit
 
+	val match_unlock_exp : bool -> unit
+
 	val ignore_writes : bool -> unit
 
 end
@@ -58,6 +60,8 @@ module Get : sig
 	val all_lock_types : unit -> bool
 
 	val match_lock_exp : unit -> bool
+	
+	val match_unlock_exp : unit -> bool
 
 	val ignore_writes : unit -> bool
 

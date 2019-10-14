@@ -1243,6 +1243,16 @@ and Effects : sig
 	= struct
 
 	type mem_kind = Alloc | Free | Read | Write | Uninit | Call | Lock | Unlock
+	
+	let mem_kind_pp m = match m with
+		| Alloc 	-> "Alloc" 
+		| Free 		-> "Free"
+		| Read 		-> "Read"
+		| Write 	-> "Write"
+		| Uninit 	-> "Uninit"
+		| Call 		-> "Call"
+		| Lock 		-> "Lock"
+		| Unlock 	-> "Unlock"
 
 	type e = Var of EffectVar.t
 		   | Mem of mem_kind * Region.t

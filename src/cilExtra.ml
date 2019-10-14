@@ -1,5 +1,6 @@
 open Batteries
 open Cil
+open Dolog
 
 (* TODO: We can also negate Le, Ge, Lt and Gt *)
 let negateExp = function
