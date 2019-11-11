@@ -144,7 +144,7 @@ analyze() {
             if [ -f "$old_wfile" ] && ! diff -Bw "$wfile" "$old_file" &>/dev/null; then
                 dup=true
             fi
-            if [ "$dup" = false ] || [ "$ignore_old" = false ]; then
+            if [ "$dup" = false ] || [ "$ignore_old" = true ]; then
                 echo "Yeheey, we may have found a new bug in $cfile!"
                 cat "$wfile" >>"$new_bugs"
             fi
@@ -175,13 +175,15 @@ mkdir -p "$eba_folder/"
 [ -f "$eba_log" ] && mv "$eba_log" "$eba_log.bak"
 [ -f "$new_bugs" ] && mv "$new_bugs" "$new_bugs.bak"
 touch "$make_log" "$eba_log" "$new_bugs"
-if [ "$reanalize" = false ]; then
+echo OK?
+if [ "$reanalyze" = false ]; then
+    echo OK
     [ -f "$eba_list_of_files_to_analyze" ] && mv "$eba_list_of_files_to_analyze" "$eba_list_of_files_to_analyze.bak"
     touch "$eba_list_of_files_to_analyze"
     echo "Collecting files to analyze..."
     make -j"$jobs" C=1 CHECK="$0 list $eba_list_of_files_to_analyze" "$@" &>>"$make_log"
 fi
-readonly new_files=$(wc -l <_eba/c-files-to-analyze)
+readonly new_files=$(wc -l <"$eba_list_of_files_to_analyze")
 echo "NOTE: Bug reports will be gathered in $new_bugs."
 echo "There are $new_files files to analyze, let's go!"
 readarray -t files_to_analyze < "$eba_list_of_files_to_analyze"

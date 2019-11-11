@@ -48,6 +48,8 @@ fi
 
 current="${next_tags[0]}"
 
+git checkout $current
+
 if [ ${#next_tags[@]} -lt $nof_tags ]; then
     echo "$0: warning: Could only find tag $current, will analyze it from scratch."
     ./eba-linux.sh -j 2 drivers
@@ -55,6 +57,6 @@ else
     previous="${next_tags[$delta]}"
     echo "$0: I will analyze changes to $current wrt $previous."
     cp _eba/c-files-to-analyze _eba/c-files-to-analyze.bak
-    git diff --name-only "$previous".."$current" | grep -E "^drivers.*\.c" >_eba/c-files-to-analyze
-    ./eba-linux.sh -j 2 -r
+    git diff --name-only "$previous".."$current" | grep -E "^(block|drivers|fs|net|sound).*\.c" >_eba/c-files-to-analyze
+    eba-linux.sh -j 4 -r
 fi
