@@ -133,6 +133,7 @@ analyze() {
         # EBA doesn't support _Static_assert yet, and it doesn't really matter,
         # so let's delete it...
         sed -i '/^_Static_assert/ d' "$tfile"
+        sed -i 's/asm __inline volatile/asm volatile/g' "$tfile"
 
         echo "Analyzing $cfile ... " >>"$eba_log"
         /usr/bin/time -a -o "$eba_log" --format="%E" timeout "$eba_timeout" \

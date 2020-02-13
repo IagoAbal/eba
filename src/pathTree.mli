@@ -113,3 +113,4 @@ val inline_check :
 	'st -> step ->
 	(step * path) option
 
+val inline : AFun.t -> step -> (AFun.t * t delayed) option

@@ -8,27 +8,32 @@ open Abs
 module L = LazyList
 
 type checks = {
-	  chk_uninit 	: bool
-	; chk_dlock  	: bool
-	; chk_dunlock  	: bool
-	; chk_dunlock_inv  	: bool
-	; chk_uaf    	: bool
-	; chk_birq   	: bool
+	  chk_uninit 					: bool
+	; chk_dlock  					: bool
+	; chk_dunlock  					: bool
+	; chk_dunlock_inv  				: bool
+	; chk_uaf    					: bool
+	; chk_birq   					: bool
+	; chk_automata_double_unlock   	: bool
 }
 
 let run_checks checks file fileAbs :unit =
-	let run_check_fun fd in_func =
+	let print_bugs = 
 		let with_warn_out print =
 			if Opts.Get.warn_output()
 			then File.with_file_out (Cil.(file.fileName) ^ ".warn") print
 			else print IO.stdout
 		in
-		in_func fileAbs fd |> L.iter (fun errmsg ->
+		L.iter (fun errmsg ->
 		 	with_warn_out (fun out ->
 				Printf.fprintf out "\nPotential BUG found:\n%s\n\n" errmsg
 			)
 		)
 	in
+	
+	let run_check_fun fd in_func = in_func fileAbs fd |> print_bugs
+	in
+
 	let fds = Cil.(file.globals) |> List.filter_map (function
 		| Cil.GFun(fd,_) -> Some fd
 		| ______________ -> None
@@ -49,7 +54,15 @@ let run_checks checks file fileAbs :unit =
 		then run_check_fun fd CheckDUnlockFlow2Inverse.in_func;
 		if checks.chk_birq
 		then run_check_fun fd CheckBhOnIrqFlow2.in_func;
-	)
+	);
+	if checks.chk_automata_double_unlock
+	then 
+		List.map (fun fd -> CheckAutomataDoubleUnlock.check fileAbs fd) fds
+		|> List.flatten 
+		|> CheckAutomataDoubleUnlock.filter_results 
+		|> CheckAutomataDoubleUnlock.stringify_results
+		|> L.of_list 
+		|> print_bugs
 
 let infer_file checks fn =
 	let file = Frontc.parse fn () in
@@ -84,7 +97,7 @@ let infer_files verbosity
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
 		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
 		flag_all_lock_types flag_no_match_lock_exp flag_ignore_writes
-		chk_uninit chk_dlock chk_dunlock chk_dunlock_inv chk_uaf chk_birq
+		chk_uninit chk_dlock chk_dunlock chk_dunlock_inv chk_uaf chk_birq chk_automata_double_unlock
 		files =
 	(* CIL: do not print #line directives. *)
 	Cil.lineDirectiveStyle := None;
@@ -104,7 +117,7 @@ let infer_files verbosity
 	Opts.Set.all_lock_types flag_all_lock_types;
 	Opts.Set.match_lock_exp (not flag_no_match_lock_exp);
 	Opts.Set.ignore_writes flag_ignore_writes;
-	let checks = { chk_uninit; chk_dlock; chk_dunlock; chk_dunlock_inv; chk_uaf; chk_birq } in
+	let checks = { chk_uninit; chk_dlock; chk_dunlock; chk_dunlock_inv; chk_uaf; chk_birq; chk_automata_double_unlock } in
 	Axioms.load_axioms();
 	if flag_fake_gcc
 	then infer_file_gcc checks files
@@ -209,6 +222,10 @@ let check_dunlock_inv =
 	let doc = "Check for double unlocking - inverse" in
 	Arg.(value & flag & info ["dUi"; "dunlockinv"] ~doc)
 
+let check_automata_double_unlock =
+	let doc = "Check for double unlocking using automata" in
+	Arg.(value & flag & info ["dUa"; "dunlockaut"] ~doc)
+
 let check_uaf =
 	let doc = "Check for use-after-free" in
 	Arg.(value & flag & info ["F"; "uaf"] ~doc)
@@ -234,7 +251,7 @@ let cmd =
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
 		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
 		$ flag_all_lock_types $ flag_no_match_lock_exp $ flag_ignore_writes
-		$ check_uninit $ check_dlock $ check_dunlock $ check_dunlock_inv $ check_uaf $ check_birq
+		$ check_uninit $ check_dlock $ check_dunlock $ check_dunlock_inv $ check_uaf $ check_birq $ check_automata_double_unlock
 		$ files),
 	Term.info "eba" ~version:"0.1" ~doc ~man
 

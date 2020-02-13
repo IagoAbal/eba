@@ -40,9 +40,8 @@ let arg_is_linux_lock e :bool =
 	match unrollTypeDeep (typeOf e) with
 	| TPtr (TComp(ci,_),_)
 	(* THINK: more? *)
-	when ci.cname = "spinlock" || ci.cname = "mutex" -> true
-	| _ ->
-		false
+	| TPtr(TComp(ci, _), _) -> if ci.cname = "spinlock" || ci.cname = "mutex" then true else false
+	| _ -> false
 
 let find_arg_in_call pick instrs : exp option =
 	List.Exceptionless.find_map pick instrs

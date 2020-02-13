@@ -422,7 +422,9 @@ let rec reachable ks t ~guard ~target ~trace st :('st * step * path * t delayed)
 	let open L in
 	match t() with
 	| Assume(cond,b,t') ->
-		map (push_dec cond b) (reachable ks t' guard target trace st)
+		let res = map (push_dec cond b) in 
+		let explored = (reachable ks t' guard target trace st) in
+		explored |> res
 	| Seq(step,t') ->
 		let ms = record_if_matches ~target step t' st in
 		if L.is_empty ms || ks
