@@ -13,6 +13,7 @@ type checks = {
 	; chk_uaf    					: bool
 	; chk_birq   					: bool
 	; chk_automata_double_unlock   	: bool
+	; chk_automata_double_lock   	: bool
 }
 
 let run_checks checks file fileAbs :unit =
@@ -56,6 +57,14 @@ let run_checks checks file fileAbs :unit =
 		|> CheckAutomataDoubleUnlock.filter_results 
 		|> CheckAutomataDoubleUnlock.stringify_results
 		|> L.of_list 
+		|> print_bugs;
+	if checks.chk_automata_double_lock
+	then 
+		List.map (fun fd -> CheckAutomataDoubleLock.check fileAbs fd) fds
+		|> List.flatten 
+		|> CheckAutomataDoubleLock.filter_results 
+		|> CheckAutomataDoubleLock.stringify_results
+		|> L.of_list 
 		|> print_bugs
 
 let infer_file checks fn =
@@ -91,7 +100,7 @@ let infer_files verbosity
 		flag_no_dce flag_no_dfe flag_safe_casts flag_externs_do_nothing
 		opt_inline_limit opt_loop_limit opt_branch_limit flag_no_path_check
 		flag_all_lock_types flag_no_match_lock_exp flag_ignore_writes
-		chk_uninit chk_dlock chk_uaf chk_birq chk_automata_double_unlock
+		chk_uninit chk_dlock chk_uaf chk_birq chk_automata_double_unlock chk_automata_double_lock
 		files =
 	(* CIL: do not print #line directives. *)
 	Cil.lineDirectiveStyle := None;
@@ -111,7 +120,7 @@ let infer_files verbosity
 	Opts.Set.all_lock_types flag_all_lock_types;
 	Opts.Set.match_lock_exp (not flag_no_match_lock_exp);
 	Opts.Set.ignore_writes flag_ignore_writes;
-	let checks = { chk_uninit; chk_dlock; chk_uaf; chk_birq; chk_automata_double_unlock } in
+	let checks = { chk_uninit; chk_dlock; chk_uaf; chk_birq; chk_automata_double_unlock; chk_automata_double_lock } in
 	Axioms.load_axioms();
 	if flag_fake_gcc
 	then infer_file_gcc checks files
@@ -212,6 +221,10 @@ let check_automata_double_unlock =
 	let doc = "Check for double unlocking using automata" in
 	Arg.(value & flag & info ["dUa"; "dunlockaut"] ~doc)
 
+let check_automata_double_lock =
+	let doc = "Check for double locking using automata" in
+	Arg.(value & flag & info ["La"; "dlockaut"] ~doc)
+
 let check_uaf =
 	let doc = "Check for use-after-free" in
 	Arg.(value & flag & info ["F"; "uaf"] ~doc)
@@ -237,7 +250,7 @@ let cmd =
 		$ flag_no_dce $ flag_no_dfe $ flag_safe_casts $ flag_externs_do_nothing
 		$ opt_inline_limit $ opt_loop_limit $ opt_branch_limit $ flag_no_path_check
 		$ flag_all_lock_types $ flag_no_match_lock_exp $ flag_ignore_writes
-		$ check_uninit $ check_dlock $ check_uaf $ check_birq $ check_automata_double_unlock
+		$ check_uninit $ check_dlock $ check_uaf $ check_birq $ check_automata_double_unlock $ check_automata_double_lock
 		$ files),
 	Term.info "eba" ~version:"0.1" ~doc ~man
 

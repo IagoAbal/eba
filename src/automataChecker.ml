@@ -133,20 +133,25 @@ module Make (A : AutomataSpec) : S = struct
 						List.fold_left (fun acc effect -> apply_transition effect acc) map_to_change effects 
 					) map permutations in
 
-				let are_all_error = for_all_results input result A.is_accepting in
-				let are_all_not_error = for_all_results input result (fun state -> not (A.is_accepting state)) in
-				
+				let are_all_error = for_all_results input result A.is_error in
+				let are_all_not_error = for_all_results input result (fun state -> not (A.is_error state)) in
+
+				let result_killed = 
+					Map.filter_map (fun _ value -> 
+						let filtered = List.filter (fun state -> not (A.is_accepting state) || A.is_error state) value in
+						if List.is_empty filtered then None else Some filtered)
+					result in
+
 				(* 	If some --- but not all --- states are errors then there's uncertainty about whether the given step 
 					will lead to an error. Therefore we inline in order to find out whether an error is really present. 
 					If all states are errors or all states are not errors, we just continue exploration. 
 				*)
-
-				if are_all_error || are_all_not_error then explore_paths func remaining result check_type
+				if are_all_error || are_all_not_error then explore_paths func remaining result_killed check_type
 				else 
 					let inlined_result = 
 						match inline func step with
 						| Some (_, inlined_path) 	-> explore_paths func inlined_path map Must
-						| _ 						-> result
+						| _ 						-> result_killed
 					in
 					explore_paths func remaining inlined_result check_type
 		| Assume(_, _, remaining) -> 
