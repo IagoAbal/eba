@@ -25,6 +25,7 @@ module type AutomataSpec = sig
 	val initial_state : step -> AFun.t -> checker_state
 	val is_accepting : checker_state -> bool
 	val does_write : effects -> checker_state -> bool
+	val should_permute : bool
 	val is_error : checker_state -> bool
 	val transition_labels : mem_kind list
 	val pp_checker_state : checker_state -> SmartPrint.t
@@ -122,7 +123,7 @@ module Make (A : AutomataSpec) : S = struct
 
 				(* 	Find all permutations of effects e.g. {{lock, unlock} -> {{lock, unlock}, {unlock, lock}} 
 					in order to evaluate all effect orders. *)
-				let permutations = permute input in 
+				let permutations = if A.should_permute then permute input else [input] in 
 				let result = List.fold_left (fun map_to_change effects ->
 						(* 	For each effect in a given permutation, apply the transition function, 
 							and add the result to the (region, checker_state) -> [checker_state] map. 

@@ -25,6 +25,8 @@ module AutomataSpec = struct
 		kill_region: Regions.t
 	}
 
+	let should_permute = true
+
 	let state_to_string state = 
 		let open PP in
 		let st = match state with 
