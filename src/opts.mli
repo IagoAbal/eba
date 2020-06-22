@@ -5,6 +5,8 @@ module Set : sig
 
 	val save_abs : bool -> unit
 
+	val no_static : bool -> unit
+
 	val warn_output : bool -> unit
 
 	val dce : bool -> unit
@@ -38,6 +40,8 @@ module Get : sig
 	val gc_stats : unit -> bool
 
 	val save_abs : unit -> bool
+
+	val no_static : unit -> bool
 
 	val warn_output : unit -> bool
 

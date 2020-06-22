@@ -65,17 +65,20 @@ module AutomataSpec = struct
     let transition previous input step = 
 		let next new_state = with_previous previous new_state step in
 		let previous_state = previous.current_state in 
+		(* pp_step step |> PP.to_string |> Format.printf "step: %s"; *)
 		match previous_state with 
 		| Unlocked ->
 			(match input with 
-			| Mem(Lock, _)		-> next Locked
+			| Mem(Lock, _)		-> (* pp_e input |> PP.to_string |> Format.printf "%s\t\t Unlocked -> Locked\n"; *) next Locked
 			| _         		-> next previous_state
 			)
         | Locked ->
 			(match input with 
 			| Mem(Lock, _)		-> next (Error input)
 			| Mem(Unlock, _)  	-> next Unlocked_final
+			| _ 				-> next previous_state
 			)
+		| Unlocked_final 		-> next previous_state
         | Error _				-> next previous_state
 	
 	let is_accepting state = 

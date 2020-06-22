@@ -38,7 +38,7 @@ end
 
 module type S = sig
 	type result
-	val check : AFile.t -> Cil.fundec -> result list
+	val check : AFile.t -> Cil.fundec -> bool -> result list
 	val filter_results : result list -> result list
 	val stringify_results : result list -> string list
 end
@@ -124,6 +124,13 @@ module Make (A : AutomataSpec) : S = struct
 				(* 	Find all permutations of effects e.g. {{lock, unlock} -> {{lock, unlock}, {unlock, lock}} 
 					in order to evaluate all effect orders. *)
 				let permutations = if A.should_permute then permute input else [input] in 
+				let without_accepting_short_term_checkers = 
+					Map.filter_map (fun _ value -> 
+						let filtered = List.filter (fun state -> not (A.is_accepting state) || A.is_error state) value in
+						if List.is_empty filtered then None else Some filtered)
+					map
+				in
+
 				let result = List.fold_left (fun map_to_change effects ->
 						(* 	For each effect in a given permutation, apply the transition function, 
 							and add the result to the (region, checker_state) -> [checker_state] map. 
@@ -131,29 +138,23 @@ module Make (A : AutomataSpec) : S = struct
 							This expresses that a given region has multiple state machines monitoring it 
 							if multiple evaluation orders are possible for the effects of that region. *)
 						List.fold_left (fun acc effect -> apply_transition effect acc) map_to_change effects 
-					) map permutations in
+					) without_accepting_short_term_checkers permutations in
 
 				let are_all_error = for_all_results input result A.is_error in
 				let are_all_not_error = for_all_results input result (fun state -> not (A.is_error state)) in
-
-				let result_killed = 
-					Map.filter_map (fun _ value -> 
-						let filtered = List.filter (fun state -> not (A.is_accepting state) || A.is_error state) value in
-						if List.is_empty filtered then None else Some filtered)
-					result in
 
 				(* 	If some --- but not all --- states are errors then there's uncertainty about whether the given step 
 					will lead to an error. Therefore we inline in order to find out whether an error is really present. 
 					If all states are errors or all states are not errors, we just continue exploration. 
 				*)
-				if are_all_error || are_all_not_error then explore_paths func remaining result_killed check_type
+				if are_all_error || are_all_not_error then explore_paths func remaining result check_type
 				else 
 					let inlined_result = 
 						match inline func step with
 						| Some (_, inlined_path) 	-> explore_paths func inlined_path map Must
-						| _ 						-> result_killed
+						| _ 						-> result
 					in
-					explore_paths func remaining inlined_result check_type
+					explore_paths func remaining inlined_result May
 		| Assume(_, _, remaining) -> 
 			explore_paths func remaining map check_type
 		| If(true_path, false_path) -> 
@@ -170,10 +171,10 @@ module Make (A : AutomataSpec) : S = struct
 			merge
 		| Nil -> map
 
-	let check file declaration =
+	let check file declaration nonstatic_only =
 		let variable_info = Cil.(declaration.svar) in
 		match variable_info.vstorage with 
-		| Static -> []
+		| Static when nonstatic_only -> []
 		| _ ->
 			let _, global_function = Option.get(AFile.find_fun file variable_info) in
 			let path_tree = paths_of global_function in
